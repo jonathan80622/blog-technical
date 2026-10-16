@@ -13,24 +13,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  migrate-and-deploy:
+  migrate-and-verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
-      - name: Check deployment secrets
+      - name: Check migration secret
         shell: bash
         run: |
-          for name in DATABASE_URL VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+          for name in DATABASE_URL; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing GitHub Actions secret: $name"
               exit 1
@@ -54,9 +50,3 @@ jobs:
 
       - name: Verify pgvector and research tables
         run: node scripts/verify-database.mjs
-
-      - name: Install Vercel CLI
-        run: pnpm add --global vercel@latest
-
-      - name: Deploy production from source
-        run: vercel deploy --prod --yes --token="$VERCEL_TOKEN"
