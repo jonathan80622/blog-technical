@@ -3,3 +3,5 @@ node_modules
 .next
 .env
 *.log
+.vercel
+.env*
