@@ -21,4 +21,4 @@ Vercel and Prisma Postgres are the active application control plane. The legacy 
 
 ## Enqueue the October 2026 market-map batch
 
-`.github/workflows/enqueue-market-map.yml` is manually dispatched from GitHub Actions; a push never runs it. Add the direct Production Prisma Postgres connection string as the GitHub environment secret `DATABASE_URL` in the `production` environment. Then run **Enqueue market-map source fetches** and enter `ENQUEUE_2026_10_17`. The action calls the idempotent batch script and prints only created/already-queued counts.
+`.github/workflows/enqueue-market-map.yml` is manually dispatched from GitHub Actions; a push never runs it. Add the direct Production Prisma Postgres connection string as the GitHub environment secret `DATABASE_URL` in the `production` environment. Then run **Enqueue market-map source fetches**. The action calls the idempotent batch script and prints only created/already-queued counts.

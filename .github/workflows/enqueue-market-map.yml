@@ -2,18 +2,12 @@ name: Enqueue market-map source fetches
 
 on:
   workflow_dispatch:
-    inputs:
-      confirmation:
-        description: Type ENQUEUE_2026_10_17 to create the batch's source-fetch jobs.
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 jobs:
   enqueue:
-    if: github.event.inputs.confirmation == 'ENQUEUE_2026_10_17'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
@@ -21,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Install the locked application dependencies
         run: npx pnpm@11 install --frozen-lockfile
       - name: Generate the Prisma client
