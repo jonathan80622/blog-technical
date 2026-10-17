@@ -1,0 +1,9 @@
+CREATE TYPE "SourceRunState" AS ENUM ('QUEUED','FETCHING','VALIDATING','RETRY_SCHEDULED','AGENT_ESCALATED','REPLAYING','VERIFIED','FAILED','BLOCKED');
+CREATE TABLE "ResearchRun" ("id" TEXT NOT NULL, "label" TEXT, "state" "SourceRunState" NOT NULL DEFAULT 'QUEUED', "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "ResearchRun_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "SourceRun" ("id" TEXT NOT NULL, "researchRunId" TEXT NOT NULL, "url" TEXT NOT NULL, "sourceKind" TEXT NOT NULL, "state" "SourceRunState" NOT NULL DEFAULT 'QUEUED', "stage" TEXT NOT NULL DEFAULT 'Queued', "attempts" INTEGER NOT NULL DEFAULT 0, "maxAttempts" INTEGER NOT NULL DEFAULT 4, "nextRetryAt" TIMESTAMP(3), "workflowRunId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "SourceRun_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "SourceRunEvent" ("id" TEXT NOT NULL, "sourceRunId" TEXT NOT NULL, "state" "SourceRunState" NOT NULL, "stage" TEXT NOT NULL, "message" TEXT NOT NULL, "metadata" JSONB, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "SourceRunEvent_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "SourceRun_researchRunId_updatedAt_idx" ON "SourceRun"("researchRunId","updatedAt");
+CREATE INDEX "SourceRun_state_nextRetryAt_idx" ON "SourceRun"("state","nextRetryAt");
+CREATE INDEX "SourceRunEvent_sourceRunId_createdAt_idx" ON "SourceRunEvent"("sourceRunId","createdAt");
+ALTER TABLE "SourceRun" ADD CONSTRAINT "SourceRun_researchRunId_fkey" FOREIGN KEY ("researchRunId") REFERENCES "ResearchRun"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SourceRunEvent" ADD CONSTRAINT "SourceRunEvent_sourceRunId_fkey" FOREIGN KEY ("sourceRunId") REFERENCES "SourceRun"("id") ON DELETE CASCADE ON UPDATE CASCADE;

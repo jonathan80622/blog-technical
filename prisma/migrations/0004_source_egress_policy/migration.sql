@@ -1,0 +1,1 @@
+ALTER TABLE "Source" ADD COLUMN "allowedDomains" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

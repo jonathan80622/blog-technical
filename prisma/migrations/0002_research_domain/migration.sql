@@ -1,0 +1,25 @@
+CREATE TYPE "CoverageOutcome" AS ENUM ('NOT_SEARCHED','SEARCHED_UNRESOLVED','VERIFIED','FAILED','CONFLICTING','NOT_APPLICABLE');
+CREATE TYPE "ClaimStatus" AS ENUM ('CANDIDATE','ACCEPTED','REJECTED','CONFLICTING');
+CREATE TYPE "InvestorRole" AS ENUM ('LEAD','CO_LEAD','PARTICIPANT','UNSPECIFIED');
+
+CREATE TABLE "Investor" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL UNIQUE, "canonicalDomain" TEXT UNIQUE, "rationale" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL);
+CREATE TABLE "Company" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL UNIQUE, "canonicalDomain" TEXT UNIQUE, "description" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL);
+CREATE TABLE "EntityAlias" ("id" TEXT PRIMARY KEY, "companyId" TEXT NOT NULL REFERENCES "Company"("id") ON DELETE CASCADE, "alias" TEXT NOT NULL, "evidenceUrl" TEXT, UNIQUE("companyId","alias"));
+ALTER TABLE "Source" ADD CONSTRAINT "Source_investorId_fkey" FOREIGN KEY ("investorId") REFERENCES "Investor"("id");
+ALTER TABLE "Source" ADD CONSTRAINT "Source_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id");
+ALTER TABLE "Source" ADD COLUMN "adapter" TEXT, ADD COLUMN "refreshPolicy" TEXT, ADD COLUMN "knownLimitations" TEXT, ADD COLUMN "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+CREATE TABLE "PortfolioRelationship" ("id" TEXT PRIMARY KEY, "investorId" TEXT NOT NULL REFERENCES "Investor"("id") ON DELETE CASCADE, "companyId" TEXT NOT NULL REFERENCES "Company"("id") ON DELETE CASCADE, "sourceId" TEXT NOT NULL REFERENCES "Source"("id"), "observedAt" TIMESTAMP(3), UNIQUE("investorId","companyId","sourceId"));
+CREATE TABLE "FundingRound" ("id" TEXT PRIMARY KEY, "companyId" TEXT NOT NULL REFERENCES "Company"("id") ON DELETE CASCADE, "stage" TEXT NOT NULL, "announcedAt" TIMESTAMP(3), "closedAt" TIMESTAMP(3), "amount" DECIMAL, "currency" TEXT, "status" "ClaimStatus" NOT NULL DEFAULT 'CANDIDATE');
+CREATE INDEX "FundingRound_companyId_announcedAt_idx" ON "FundingRound"("companyId","announcedAt");
+CREATE TABLE "RoundInvestor" ("id" TEXT PRIMARY KEY, "fundingRoundId" TEXT NOT NULL REFERENCES "FundingRound"("id") ON DELETE CASCADE, "investorId" TEXT NOT NULL REFERENCES "Investor"("id"), "role" "InvestorRole" NOT NULL DEFAULT 'UNSPECIFIED', "sourceId" TEXT, UNIQUE("fundingRoundId","investorId"));
+ALTER TABLE "Document" ADD COLUMN "statusCode" INTEGER, ADD COLUMN "responseContentType" TEXT, ADD COLUMN "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "DocumentChunk" ADD COLUMN "startOffset" INTEGER, ADD COLUMN "endOffset" INTEGER;
+CREATE TABLE "Claim" ("id" TEXT PRIMARY KEY, "companyId" TEXT REFERENCES "Company"("id") ON DELETE CASCADE, "fundingRoundId" TEXT REFERENCES "FundingRound"("id") ON DELETE CASCADE, "predicate" TEXT NOT NULL, "value" JSONB NOT NULL, "status" "ClaimStatus" NOT NULL DEFAULT 'CANDIDATE', "reviewNote" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE "ClaimEvidence" ("id" TEXT PRIMARY KEY, "claimId" TEXT NOT NULL REFERENCES "Claim"("id") ON DELETE CASCADE, "documentVersionId" TEXT NOT NULL REFERENCES "DocumentVersion"("id") ON DELETE CASCADE, "passage" TEXT NOT NULL, "startOffset" INTEGER, "endOffset" INTEGER, UNIQUE("claimId","documentVersionId","passage"));
+CREATE TABLE "CoverageCheck" ("id" TEXT PRIMARY KEY, "companyId" TEXT NOT NULL REFERENCES "Company"("id") ON DELETE CASCADE, "taskType" TEXT NOT NULL, "scope" JSONB NOT NULL, "outcome" "CoverageOutcome" NOT NULL DEFAULT 'NOT_SEARCHED', "reason" TEXT, "lastVerifiedAt" TIMESTAMP(3), "nextDueAt" TIMESTAMP(3), "attemptId" TEXT, UNIQUE("companyId","taskType"));
+ALTER TABLE "Job" ADD COLUMN "payload" JSONB;
+CREATE TABLE "Outbox" ("id" TEXT PRIMARY KEY, "jobId" TEXT NOT NULL REFERENCES "Job"("id") ON DELETE CASCADE, "topic" TEXT NOT NULL, "payload" JSONB NOT NULL, "deliveredAt" TIMESTAMP(3), "deliveryAttempts" INTEGER NOT NULL DEFAULT 0, "lastError" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX "Outbox_deliveredAt_createdAt_idx" ON "Outbox"("deliveredAt","createdAt");
+CREATE TABLE "Conversation" ("id" TEXT PRIMARY KEY, "ownerId" TEXT NOT NULL, "title" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL);
+CREATE TABLE "Message" ("id" TEXT PRIMARY KEY, "conversationId" TEXT NOT NULL REFERENCES "Conversation"("id") ON DELETE CASCADE, "role" TEXT NOT NULL, "content" JSONB NOT NULL, "citations" JSONB, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE "ResearchRequest" ("id" TEXT PRIMARY KEY, "ownerId" TEXT, "scope" JSONB NOT NULL, "jobId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);

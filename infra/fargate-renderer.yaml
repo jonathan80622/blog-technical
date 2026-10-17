@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: IAM-authenticated API Gateway starts a pinned, one-job Fargate renderer.
+Parameters:
+  ImageUri: {Type: String, Description: "Immutable ECR image digest"}
+  VpcId: {Type: AWS::EC2::VPC::Id}
+  PublicSubnetA: {Type: AWS::EC2::Subnet::Id, Description: "Public subnet; task receives a public IP for outbound HTTPS only."}
+  PublicSubnetB: {Type: AWS::EC2::Subnet::Id, Description: "Public subnet; task receives a public IP for outbound HTTPS only."}
+  ControlPlaneBaseUrl: {Type: String, Description: "Public Vercel deployment URL, without a trailing slash"}
+  SnapshotBucketName: {Type: String}
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties: {ClusterName: vc-intelligence-renderer}
+  RendererSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Egress-only renderer; intentionally no ingress rules
+      VpcId: !Ref VpcId
+      SecurityGroupEgress: [{IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}]
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: {Version: "2012-10-17", Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: "sts:AssumeRole"}]}
+      ManagedPolicyArns: ["arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"]
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: {Version: "2012-10-17", Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: "sts:AssumeRole"}]}
+      Policies:
+        - PolicyName: ArtifactWriteOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - {Effect: Allow, Action: ["s3:PutObject"], Resource: !Join ["", ["arn:", !Ref AWS::Partition, ":s3:::", !Ref SnapshotBucketName, "/raw/*"]]}
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /ecs/vc-intelligence-renderer, RetentionInDays: 30}
+  Task:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: vc-intelligence-renderer
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "512"
+      Memory: "1024"
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: renderer
+          Image: !Ref ImageUri
+          Essential: true
+          ReadonlyRootFilesystem: true
+          LinuxParameters: {InitProcessEnabled: true}
+          Environment: [{Name: S3_SNAPSHOT_BUCKET, Value: !Ref SnapshotBucketName},{Name: CONTROL_PLANE_BASE_URL, Value: !Ref ControlPlaneBaseUrl},{Name: MAX_SCROLL_STEPS, Value: "20"},{Name: STABLE_ROUNDS, Value: "3"},{Name: MAX_WALL_MS, Value: "60000"}]
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref LogGroup, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: renderer}}
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: {Version: "2012-10-17", Statement: [{Effect: Allow, Principal: {Service: apigateway.amazonaws.com}, Action: "sts:AssumeRole"}]}
+      Policies:
+        - PolicyName: RunOnlyThisTask
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - {Effect: Allow, Action: "ecs:RunTask", Resource: !Ref Task}
+              - {Effect: Allow, Action: "iam:PassRole", Resource: [!GetAtt TaskRole.Arn,!GetAtt ExecutionRole.Arn]}
+  Api:
+    Type: AWS::ApiGateway::RestApi
+    Properties: {Name: vc-intelligence-renderer, EndpointConfiguration: {Types: [REGIONAL]}}
+  Render:
+    Type: AWS::ApiGateway::Resource
+    Properties: {RestApiId: !Ref Api, ParentId: !GetAtt Api.RootResourceId, PathPart: render}
+  RenderMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref Render
+      HttpMethod: POST
+      AuthorizationType: AWS_IAM
+      Integration:
+        Type: AWS
+        Credentials: !GetAtt ApiRole.Arn
+        IntegrationHttpMethod: POST
+        Uri: !Join ["", ["arn:", !Ref AWS::Partition, ":apigateway:", !Ref AWS::Region, ":ecs:action/RunTask"]]
+        RequestTemplates:
+          application/json: !Join ["", ['{"cluster":"',!Ref Cluster,'","taskDefinition":"',!Ref Task,'","launchType":"FARGATE","networkConfiguration":{"awsvpcConfiguration":{"subnets":["',!Ref PublicSubnetA,'","',!Ref PublicSubnetB,'"],"securityGroups":["',!Ref RendererSecurityGroup,'"],"assignPublicIp":"ENABLED"}},"overrides":{"containerOverrides":[{"name":"renderer","environment":[{"name":"JOB_ID","value":"$util.escapeJavaScript($input.path(''$.jobId''))"},{"name":"RENDER_TOKEN","value":"$util.escapeJavaScript($input.path(''$.token''))"}]}]}}']]
+        IntegrationResponses: [{StatusCode: "202"}]
+      MethodResponses: [{StatusCode: "202"}]
+  Deployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: RenderMethod
+    Properties: {RestApiId: !Ref Api}
+  Stage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref Api
+      DeploymentId: !Ref Deployment
+      StageName: v1
+      MethodSettings: [{ResourcePath: /render, HttpMethod: POST, ThrottlingBurstLimit: 1, ThrottlingRateLimit: 1}]
+Outputs:
+  RendererApiUrl: {Value: !Join ["", ["https://",!Ref Api,".execute-api.",!Ref AWS::Region,".",!Ref AWS::URLSuffix,"/v1/render"]]}

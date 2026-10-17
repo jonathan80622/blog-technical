@@ -1,19 +1,24 @@
 # VC Intelligence
 
-An evidence-first personal VC research pilot. The UI ships with fixture data so its critical semantics can be reviewed before credentials or live collection are provisioned.
+Evidence-first research for a selected VC universe. The application keeps portfolio membership, funding-round participation, source documents, claims, and coverage checks as distinct records.
 
-## Run
+## Local setup
 
-1. `pnpm install`
-2. Copy `.env.example` to `.env` and add a development PostgreSQL URL.
-3. `pnpm prisma generate && pnpm prisma migrate deploy`
-4. `pnpm dev`
+1. Connect Prisma Postgres through the Vercel integration and enable the `vector` extension.
+2. Copy `.env.example` to `.env.local` and set `DATABASE_URL` and OpenAI credentials.
+3. Run `npx pnpm@11 exec prisma migrate deploy`, then `npx pnpm@11 run db:seed`.
+4. Run `npx pnpm@11 run dev`.
 
-## What is implemented
+The seed creates only the two selected investor records and their configured portfolio sources. It intentionally does **not** invent ten companies or funding facts; collection and review promote those from evidence.
 
-- Browseable Investors, Companies, Coverage, Sources, Research runs, and Chat views.
-- Evidence inspector that separates funding participation from portfolio membership and exposes uncertainty.
-- A Prisma 6 data model for facts, evidence, coverage, documents, jobs, attempts, and transactional outbox delivery.
-- Explicit pgvector migration (1536 dimensions; choose and version the actual embedding model before production import).
+## Collection contract
 
-The visual fixture is intentional: it never calls live search or claims that an empty result proves absence. Configure database, source adapters, object storage, queue, worker, and model credentials before enabling collection.
+`POST /api/research` creates a durable `ResearchRun`, `SourceRun`, and initial event, then returns `202`. A Vercel Workflow runs collection in durable steps; the Collection screen polls the stored source-event timeline.
+
+## Hosting boundary
+
+Vercel and Prisma Postgres are the active application control plane. The legacy AWS renderer scaffold is not part of the deployed collection path.
+
+## Enqueue the October 2026 market-map batch
+
+`.github/workflows/enqueue-market-map.yml` is manually dispatched from GitHub Actions; a push never runs it. Add the direct Production Prisma Postgres connection string as the GitHub environment secret `DATABASE_URL` in the `production` environment. Then run **Enqueue market-map source fetches** and enter `ENQUEUE_2026_10_17`. The action calls the idempotent batch script and prints only created/already-queued counts.

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { embed } from "@/lib/openai";
+import { assessSourceResponse } from "@/lib/decisions";
 
 export const configuredSources = [
   { name:"Lux portfolio", url:"https://www.luxcapital.com/companies", type:"portfolio" },
@@ -10,16 +11,23 @@ export const configuredSources = [
 ];
 const clean = (html:string) => html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<noscript[\s\S]*?<\/noscript>/gi, " ").replace(/<[^>]+>/g," ").replace(/&nbsp;|&#160;/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
 const chunks = (text:string) => { const size=1800, overlap=180; const result:string[]=[]; for(let i=0;i<text.length;i+=size-overlap) result.push(text.slice(i,i+size)); return result.filter(x=>x.length>120); };
-export async function runResearch(url:string, label?:string) {
-  new URL(url); const key=`fetch:${url}`; const job=await db.job.upsert({ where:{deduplicationKey:key}, update:{state:"RUNNING",progress:"Fetching source",attempts:{increment:1},updatedAt:new Date()}, create:{type:"FETCH_AND_INDEX",deduplicationKey:key,state:"RUNNING",progress:"Fetching source",attempts:1} });
+export async function runResearch(url:string, label?:string, existingJobId?:string) {
+  new URL(url); const key=`fetch:${url}`; const job=existingJobId
+    ? await db.job.update({where:{id:existingJobId},data:{state:"RUNNING",progress:"Fetching source",attempts:{increment:1},updatedAt:new Date()}})
+    : await db.job.upsert({ where:{deduplicationKey:key}, update:{state:"RUNNING",progress:"Fetching source",attempts:{increment:1},updatedAt:new Date()}, create:{type:"FETCH_AND_INDEX",deduplicationKey:key,state:"RUNNING",progress:"Fetching source",attempts:1} });
   await db.jobAttempt.create({data:{jobId:job.id,state:"RUNNING"}});
   try {
     const source=await db.source.upsert({where:{url},update:{type:"official_page"},create:{url,type:"official_page",capabilities:["fetch","extract","index"],rationale:label ?? "User-requested research source"}});
     const response=await fetch(url,{headers:{"User-Agent":"VC-Intelligence research pilot (+human-reviewed)"},signal:AbortSignal.timeout(25_000)});
     if(!response.ok) throw new Error(`Source returned HTTP ${response.status}`);
-    const raw=await response.text(), body=clean(raw); if(body.length<120) throw new Error("Parsed page body was too short to index."); await db.job.update({where:{id:job.id},data:{progress:"Extracted source body"}});
+    const raw=await response.text(), body=clean(raw); if(body.length<120) throw new Error("Parsed page body was too short to index."); await db.job.update({where:{id:job.id},data:{progress:"Checking source quality and loading behavior"}});
     const hash=createHash("sha256").update(body).digest("hex");
-    const document=await db.document.upsert({where:{canonicalUrl:url},update:{title:label ?? new URL(url).hostname,fetchedAt:new Date(),contentHash:hash},create:{sourceId:source.id,canonicalUrl:url,title:label ?? new URL(url).hostname,contentHash:hash}});
+    const document=await db.document.upsert({where:{canonicalUrl:url},update:{title:label ?? new URL(url).hostname,fetchedAt:new Date(),contentHash:hash,statusCode:response.status,responseContentType:response.headers.get("content-type")},create:{sourceId:source.id,canonicalUrl:url,title:label ?? new URL(url).hostname,contentHash:hash,statusCode:response.status,responseContentType:response.headers.get("content-type")}});
+    const assessment=await assessSourceResponse(raw,body,url);
+    await db.documentAssessment.create({data:{documentId:document.id,model:process.env.OPENAI_DECISIONS_MODEL ?? "gpt-6-luna",adapterVerdict:assessment.adapterVerdict,renderingVerdict:assessment.renderingVerdict,completenessVerdict:assessment.completenessVerdict,confidence:assessment.confidence,inputHash:assessment.inputHash}});
+    if(assessment.adapterVerdict==="unsafe_to_promote"||assessment.adapterVerdict==="insufficient_content") throw new Error(`Source assessment: ${assessment.adapterVerdict}.`);
+    if(assessment.renderingVerdict==="access_or_challenge") throw new Error("Source assessment: access or bot challenge detected.");
+    if(assessment.renderingVerdict==="needs_browser_render") throw new Error("Source assessment: browser rendering is required before extraction.");
     const previous=await db.documentVersion.findFirst({where:{documentId:document.id},orderBy:{createdAt:"desc"}});
     if(!previous || previous.body !== body) {
       const version=await db.documentVersion.create({data:{documentId:document.id,body,parserVersion:"html-text-v1"}});
