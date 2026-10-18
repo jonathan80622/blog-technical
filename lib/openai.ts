@@ -1,33 +1,13 @@
+import { parsedResponseJson, responseDiagnostic, responseText, type ResponsePayload } from "./responses-output";
+
 const key=process.env.OPENAI_API_KEY;
 
 function headers(){if(!key)throw new Error("OPENAI_API_KEY is not configured.");return {Authorization:"Bearer "+key,"Content-Type":"application/json"};}
-
-type OutputContent={type?:string;text?:string;refusal?:string};
-type OutputItem={type?:string;content?:OutputContent[]};
-type ResponsePayload={id?:string;status?:string;output_text?:string;output?:OutputItem[];incomplete_details?:{reason?:string}|null;error?:{message?:string}|null};
-
-function responseText(payload:ResponsePayload){
-  if(typeof payload.output_text==="string"&&payload.output_text.trim())return payload.output_text;
-  const text=payload.output?.flatMap(item=>item.content??[]).filter(content=>content.type==="output_text").map(content=>content.text??"").join("").trim();
-  return text||"";
-}
-
-function responseDiagnostic(payload:ResponsePayload){
-  const outputTypes=(payload.output??[]).map(item=>item.type??"unknown").join(",")||"none";
-  const reason=payload.error?.message??payload.incomplete_details?.reason??"no provider reason";
-  return "status="+(payload.status??"unknown")+", output="+outputTypes+", reason="+reason;
-}
 
 async function createResponse(body:Record<string,unknown>,label:string){
   const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:headers(),body:JSON.stringify(body)});
   if(!response.ok)throw new Error(label+" failed: "+await response.text());
   return await response.json() as ResponsePayload;
-}
-
-function parsedResponseJson(payload:ResponsePayload,label:string){
-  const value=responseText(payload);
-  if(!value)throw new Error(label+" returned no output text: "+responseDiagnostic(payload));
-  try{return JSON.parse(value) as unknown;}catch{throw new Error(label+" returned invalid JSON: "+responseDiagnostic(payload));}
 }
 
 const officialPortfolioSchema={

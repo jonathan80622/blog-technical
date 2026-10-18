@@ -1,0 +1,44 @@
+name: VC queue delivery smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployed non-production URL to test (for example, a Vercel preview URL)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Dispatch one VC and verify consumer claim
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    # The supplied deployment must use an isolated test database. This job
+    # dispatches real work and therefore consumes one prepared job and OpenAI usage.
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run raw Responses parser regression tests
+        run: pnpm test
+
+      - name: Dispatch one VC and await queue-consumer claim
+        env:
+          VC_E2E_BASE_URL: ${{ inputs.base_url }}
+        run: pnpm test:vc-queue-smoke
