@@ -1,7 +1,8 @@
 import { JobState } from "@prisma/client";
 import { db } from "@/lib/db";
 
-export const VC_DISCOVERY_TOPIC="vc-discovery.requested";
+// Vercel Queue topic names allow only letters, numbers, hyphens, and underscores.
+export const VC_DISCOVERY_TOPIC="vc-discovery-requested";
 
 export type VcDiscoveryMessage={jobId:string};
 
@@ -34,13 +35,13 @@ export async function leaseVcDiscoveryJobs(requested=5) {
 
 export async function returnVcDiscoveryJobToPending(jobId:string,error:string) {
   await db.$transaction([
-    db.job.update({where:{id:jobId},data:{state:"PENDING",leaseUntil:null,progress:"Queue publication failed"}}),
-    db.outbox.updateMany({where:{jobId,topic:"source-fetch.requested",deliveredAt:null},data:{deliveryAttempts:{increment:1},lastError:error}})
+    db.job.update({where:{id:jobId},data:{state:"PENDING",leaseUntil:null,progress:`Queue publication failed: ${error.slice(0,500)}`}}),
+    db.outbox.updateMany({where:{jobId,deliveredAt:null},data:{deliveryAttempts:{increment:1},lastError:error.slice(0,2_000)}})
   ]);
 }
 
 export async function markVcDiscoveryDispatched(jobId:string) {
-  await db.outbox.updateMany({where:{jobId,topic:"source-fetch.requested",deliveredAt:null},data:{deliveredAt:new Date(),deliveryAttempts:{increment:1},lastError:null}});
+  await db.outbox.updateMany({where:{jobId,deliveredAt:null},data:{deliveredAt:new Date(),deliveryAttempts:{increment:1},lastError:null}});
 }
 
 export async function vcDiscoverySummary() {

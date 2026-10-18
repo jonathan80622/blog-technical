@@ -14,7 +14,7 @@ try {
       if(await tx.job.findUnique({where:{deduplicationKey:key},select:{id:true}})) return false;
       const requestedSources=["official_site","portfolio","technical_blog"];
       const job=await tx.job.create({data:{type:"FETCH_FIRM_SOURCES",deduplicationKey:key,state:"PENDING",progress:"Queued to fetch official firm sources",payload:{batchId:batch.batchId,status:batch.status,name,region,requestedSources}}});
-      await tx.outbox.create({data:{jobId:job.id,topic:"source-fetch.requested",payload:{jobId:job.id,batchId:batch.batchId,name,region,requestedSources}}});
+      await tx.outbox.create({data:{jobId:job.id,topic:"vc-discovery-requested",payload:{jobId:job.id,batchId:batch.batchId,name,region,requestedSources}}});
       return true;
     });
     added?created++:alreadyQueued++;

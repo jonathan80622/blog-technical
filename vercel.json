@@ -4,7 +4,7 @@
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
-          "topic": "vc-discovery.requested",
+          "topic": "vc-discovery-requested",
           "retryAfterSeconds": 60
         }
       ]
