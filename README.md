@@ -2,6 +2,9 @@
 
 Evidence-first research for a selected VC universe. The application keeps portfolio membership, funding-round participation, source documents, claims, and coverage checks as distinct records.
 
+The UI component/backend document-ID index is in
+[\`UI-COMPONENT-INDEX\`](docs/UI-COMPONENT-INDEX.md).
+
 ## Local setup
 
 1. Connect Prisma Postgres through the Vercel integration and enable the `vector` extension.
@@ -25,6 +28,10 @@ Vercel and Prisma Postgres are the active application control plane. The legacy 
 
 ## Hobby-safe VC discovery
 
-After the market-map action has created pending jobs, the Collection screen's **Initiate next VC** button publishes exactly one job to the Vercel Queue. Its private queue consumer starts a durable workflow that uses OpenAI web search to locate an investor's official portfolio page, fetches and indexes that page, then promotes only extracted company entries whose exact supporting passage exists in the stored source document. The dispatcher keeps Prisma as the durable backlog and permits only one queued/running VC discovery at a time; it does not use Vercel Cron.
+After the market-map action has created pending jobs, the Collection screen's **Dispatch next 5 prepared VCs** control publishes up to five jobs to the Vercel Queue; **Dispatch 1 prepared VC** is the smaller fallback. Its private queue consumer starts a durable workflow that uses OpenAI web search to locate an investor's official portfolio page, fetches and indexes that page, then promotes only extracted company entries whose exact supporting passage exists in the stored source document. The dispatcher keeps Prisma as the durable backlog, permits only five queued/running VC discoveries at a time, and does not use Vercel Cron.
 
 Vercel Queue itself needs no application secret. The deployed app still needs `DATABASE_URL` and `OPENAI_API_KEY`; `OPENAI_DISCOVERY_MODEL` and `OPENAI_EXTRACTION_MODEL` are optional and default to `gpt-5.5`.
+# Documentation
+
+The UI-to-backend state contract and its document-ID index are in
+[`DOC-UI-PROGRESS-001`](docs/UI-BACKEND-PROGRESS-CONTRACT.md).
