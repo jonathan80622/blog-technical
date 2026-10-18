@@ -265,8 +265,8 @@ The minimum evidence is a deployed, end-to-end single-job run—not another buil
    `discoverInvestorSources`.
 5. Observe a terminal job result (`SUCCEEDED` or a specific persisted failure),
    plus the corresponding document/source/claim records where applicable.
-6. Trigger an intentional invalid publish in a non-production test setup and
-   verify that the queue monitor displays the actual error text.
+6. Verify that a real queue publication failure, if one occurs, is displayed by
+   the queue monitor with its provider error text.
 
 Until steps 1–5 have happened on the deployed environment, the accurate status
 is **build-verified, not integration-verified**.

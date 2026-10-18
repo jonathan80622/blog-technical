@@ -10,8 +10,7 @@
     "postinstall": "prisma generate",
     "db:seed": "node prisma/seed.mjs",
     "market-map:enqueue": "node scripts/enqueue-market-map.mjs",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:vc-queue-smoke": "node scripts/smoke-vc-dispatch.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
     "@prisma/client": "6.17.1",

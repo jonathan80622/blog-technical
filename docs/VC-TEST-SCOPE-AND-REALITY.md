@@ -3,31 +3,17 @@
 **Document ID:** `TEST-VC-REALITY-001`  
 **Status:** current test truth; this document distinguishes implemented checks from unimplemented E2E coverage
 
-## Correction: the current GitHub Action is not E2E
+## Current truth: no live-deployment test exists
 
-The manual GitHub Action named **VC queue delivery smoke test** is deliberately
-narrow. Its script is [`scripts/smoke-vc-dispatch.mjs`](../scripts/smoke-vc-dispatch.mjs).
-It does only this:
+The repository has no GitHub Action that dispatches a VC job, calls OpenAI, or
+targets a deployed URL. The previous manual URL-based “smoke test” was removed:
+the repository has no separate non-production deployment to target, and asking
+for one was an invented operational requirement.
 
-1. `POST /api/vc-discovery/dispatch` with `{ "limit": 1 }`.
-2. Read the exact `jobIds[0]` returned by that response.
-3. Poll `GET /api/vc-discovery` for that job.
-4. Pass if that job has `attempts >= 1` and reaches `RUNNING`, `SUCCEEDED`, or
-   `FAILED` within 120 seconds.
+`Repository verification` runs only `pnpm test` and `pnpm build`. It proves
+source-level behavior, not a deployed queue handoff. It **does not prove**:
 
-That verifies these production-like boundaries:
-
-| Proven by the smoke test | Concrete assertion |
-| --- | --- |
-| Browser/API request reaches deployed dispatcher | `POST` returns `202`, `state: "QUEUED"`, and one job ID. |
-| Queue producer accepts the message | The dispatcher returned a queued result rather than a publication failure. |
-| Vercel trigger and consumer route match the topic | The same job is claimed by the callback. |
-| Callback can create a workflow | `Job.attempts` increments in `claimVcDiscoveryJob()`. |
-| Database state is observable from the deployed monitor endpoint | Polling finds the returned job ID and its durable state. |
-
-It **does not prove** any of the following:
-
-| Not proven by the smoke test | Why it can still fail after smoke passes |
+| Not proven by repository verification | Why it can still fail after checks pass |
 | --- | --- |
 | Official-site discovery | The workflow can fail in `findPortfolio`, as the five real jobs did. |
 | Raw Responses parser | The consumer can start and then misread a valid OpenAI response. |
@@ -42,8 +28,9 @@ It **does not prove** any of the following:
 | Retry/dead-letter correctness | It only waits for one claim and accepts `FAILED`; it does not force duplicate delivery, step retry, or bounded terminal handling. |
 | Resource behavior | It does not simulate five concurrent workflows, the 289-job backlog, rate limits, Vercel duration limits, database connection pressure, or OpenAI spend. |
 
-Therefore “queue smoke passes” means only **the queue handoff works**. It must
-never be reported as “VC research works” or “E2E passes.”
+Therefore “repository verification passes” means only **the checked source
+behavior builds and its fixtures pass**. It must never be reported as “VC
+research works” or “E2E passes.”
 
 ## Real-world stages and their failure surfaces
 
@@ -80,25 +67,11 @@ that require explicit capability routing, a renderer, or a bounded unresolved
 coverage result; repeating the same static-fetch step three times does not make
 a JavaScript-rendered page become static HTML.
 
-## What a genuine E2E test must be
+## Live acceptance evidence
 
-A real E2E test must run in an isolated deployment and database. It must not
-use the production market-map backlog. It needs all of these preconditions:
-
-1. A Vercel preview deployment with a preview-only `DATABASE_URL` and
-   `OPENAI_API_KEY`; it must not point to production data.
-2. A test fixture investor with a stable, manually verified official portfolio
-   page that is known to be statically fetchable. Dynamic sites such as the
-   current Coatue case are renderer-adapter tests, not the baseline fixture.
-3. A unique test job/deduplication key, so the test can inspect exactly one
-   workload without competing with the market-map batch.
-4. An authenticated test-status interface or direct preview database access so
-   the test can assert exact records, not infer them from the truncated
-   eight-row monitor endpoint.
-5. A cleanup policy for the fixture job, sources, documents, claims, coverage,
-   and model/search spend.
-
-The assertions must be terminal and evidence-specific:
+The first live verification must be an explicit, user-observed run through the
+existing deployed application. It must inspect terminal and evidence-specific
+records, not merely a green action:
 
 ```text
 Job is SUCCEEDED
@@ -110,19 +83,18 @@ AND a PortfolioRelationship is present only if the promotion policy accepted it
 AND CoverageCheck records the actual task outcome
 ```
 
-For sources intentionally expected to be unresolved, a separate E2E fixture
-must assert `SEARCHED_UNRESOLVED` with an attempt record—not `SUCCEEDED` and not
-an invented negative fact.
+For a source that remains unresolved, the accepted terminal evidence is
+`SEARCHED_UNRESOLVED` with an attempt record—not an invented negative fact.
 
 ## Test layers required before completion claims
 
 | Layer | Test artifact | Required outcome | Current state |
 | --- | --- | --- | --- |
 | Wire parser unit | `tests/responses-output.test.ts` | Nested raw Responses text, top-level fallback, incomplete diagnostics | Implemented and passing |
-| Queue handoff smoke | `scripts/smoke-vc-dispatch.mjs` + manual GitHub Action | One dispatched job is claimed by consumer | Implemented; must be run against preview after deployment |
+| Queue handoff | User-observed deployed VC dispatch | Exact returned job is claimed by consumer | Not automated |
 | Provider contract integration | OpenAI test using a captured/live response | Structured-output response parses against schema | Not yet implemented as a separate CI test |
 | Source adapter integration | Static fixture and JS-rendered fixture | Static fetch succeeds; JS page routes to renderer/unresolved policy | Not implemented |
-| Workflow E2E | Isolated Vercel preview + isolated DB + fixed investor fixture | Terminal job plus exact evidence/coverage assertions | Not implemented |
+| Workflow acceptance | Existing deployed application + a selected VC job | Terminal job plus exact evidence/coverage assertions | Not automated |
 | Load/retry test | Controlled five-job batch and duplicate delivery/failure injection | Capacity, idempotency, retry, and cost behavior | Not implemented |
 
 ## Operational rule
@@ -130,9 +102,8 @@ an invented negative fact.
 Use these labels precisely:
 
 - **Unit-tested**: parser/function fixture passed.
-- **Queue-smoke-tested**: publish and callback claim passed.
-- **Workflow-E2E-tested**: isolated fixture reached the stated durable evidence
-  assertions.
+- **Deployed-observed**: a user-observed run reached the stated durable
+  evidence assertions.
 - **Production-observed**: real source completed with inspectable evidence.
 
 No weaker label may be substituted for a stronger one.

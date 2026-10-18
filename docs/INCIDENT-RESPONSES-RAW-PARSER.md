@@ -214,20 +214,11 @@ The correct completion label before those checks was **compiled, not proven**.
 raw web-search payload that failed here, a genuine top-level `output_text`
 fallback, and a tool-only/incomplete payload that must preserve diagnostics.
 
-`pnpm test:vc-queue-smoke` is a deploy-gated **queue-delivery smoke test**, not
-an end-to-end workflow test. Set
-`VC_E2E_BASE_URL` to a non-production deployed test URL. It dispatches one job,
-uses the returned `jobIds[0]` rather than a guessed queue row, and fails unless
-that same job is claimed by the consumer (`attempts >= 1`) within two minutes.
-It deliberately does not run by default because it consumes a prepared job,
-invokes a real OpenAI web-search request, and mutates the target database.
-
-The same test is available as the manual GitHub Action
-`VC queue delivery smoke test`. Its required `base_url` input is the
-already-deployed non-production URL. It runs the parser regression suite first,
-then runs the one-job smoke test. It is intentionally not attached to every
-push: the target deployment must use an isolated test database, and the test
-consumes real queue and OpenAI usage.
+The former URL-driven queue smoke test was removed. It required a separate
+non-production deployment that this project does not have, so it was not a
+valid automated test plan. `Repository verification` runs the parser regression
+suite and production build only. A queue handoff is verified only by an
+explicit, user-observed run through the existing deployment.
 
 ## Source basis
 
