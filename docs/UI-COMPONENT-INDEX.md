@@ -14,7 +14,7 @@ backend function cannot drift apart.
 | \`UI-COVERAGE-001\` | \`Coverage\` | \`data.coverage\`, \`data.companies[].coverageChecks\` from \`app/api/overview/route.ts::GET\` |
 | \`UI-CLAIMS-001\` | \`Claims\` | \`review\` → \`app/api/claims/[id]/route.ts::PATCH\` |
 | \`UI-SOURCES-001\` | \`Sources\` | \`data.companies[].sources\` from \`app/api/overview/route.ts::GET\` |
-| \`UI-VC-QUEUE-001\` | \`VcQueueStatus\` | \`load\` → \`app/api/vc-discovery/route.ts::GET\` → \`lib/vc-discovery.ts::vcDiscoverySummary\` |
+| \`UI-VC-QUEUE-001\` | \`VcQueueStatus\` | \`load\` → \`app/api/vc-discovery/route.ts::GET\` → \`lib/vc-discovery.ts::vcDiscoverySummary\`; \`replay\` → \`app/api/vc-discovery/replay/route.ts::POST\` → \`lib/vc-discovery.ts::requeueZeroPromotionVcDiscoveryJob\` |
 | \`UI-VC-DISPATCH-001\` | \`VcDispatch\` | \`dispatch\` → \`app/api/vc-discovery/dispatch/route.ts::POST\` → \`lib/vc-discovery.ts::leaseVcDiscoveryJobs\` |
 | \`UI-DIRECT-RESEARCH-001\` | \`DirectSourceResearch\` | \`submit\` → \`app/api/research/route.ts::POST\` → \`lib/source-runs.ts::createMonitoredRun\`; \`load\` → \`app/api/runs/route.ts::GET\` |
 | \`UI-COLLECTION-001\` | \`Collection\` | Composition only |

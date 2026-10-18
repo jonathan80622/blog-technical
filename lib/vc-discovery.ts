@@ -1,5 +1,6 @@
 import { JobState } from "@prisma/client";
 import { db } from "@/lib/db";
+import { vcDiscoveryActiveLimit } from "@/lib/vc-discovery-capacity";
 
 // Vercel Queue topic names allow only letters, numbers, hyphens, and underscores.
 export const VC_DISCOVERY_TOPIC="vc-discovery-requested";
@@ -26,7 +27,7 @@ export async function leaseVcDiscoveryJobs(requested=5) {
   return db.$transaction(async tx=>{
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('vc-discovery-dispatch'))`;
     const active=await tx.job.count({where:{type:"FETCH_FIRM_SOURCES",state:{in:["QUEUED","RUNNING"]}}});
-    const available=Math.max(0,5-active);
+    const available=Math.max(0,vcDiscoveryActiveLimit()-active);
     const jobs=await tx.job.findMany({where:{type:"FETCH_FIRM_SOURCES",state:{in:["PENDING","FAILED"]}},orderBy:{createdAt:"asc"},take:Math.min(Math.max(1,requested),available),select:{id:true}});
     await Promise.all(jobs.map(job=>tx.job.update({where:{id:job.id},data:{state:"QUEUED",progress:"Queued for VC source discovery",leaseUntil:new Date(Date.now()+15*60_000)}})));
     return jobs;
@@ -44,10 +45,19 @@ export async function markVcDiscoveryDispatched(jobId:string) {
   await db.outbox.updateMany({where:{jobId,deliveredAt:null},data:{deliveredAt:new Date(),deliveryAttempts:{increment:1},lastError:null}});
 }
 
+/** A completed zero-promotion run must be explicitly replayed after a policy fix. */
+export async function requeueZeroPromotionVcDiscoveryJob(jobId:string) {
+  const replayed=await db.job.updateMany({
+    where:{id:jobId,type:"FETCH_FIRM_SOURCES",state:"SUCCEEDED",progress:{startsWith:"Portfolio source indexed; promoted 0 evidence-backed companies"}},
+    data:{state:"PENDING",leaseUntil:null,progress:"Promotion replay requested; awaiting VC dispatch."}
+  });
+  return replayed.count===1;
+}
+
 export async function vcDiscoverySummary() {
   const [counts,jobs]=await Promise.all([
     db.job.groupBy({by:["state"],where:{type:"FETCH_FIRM_SOURCES"},_count:{_all:true}}),
     db.job.findMany({where:{type:"FETCH_FIRM_SOURCES"},orderBy:{updatedAt:"desc"},take:8,select:{id:true,state:true,progress:true,attempts:true,updatedAt:true,payload:true}})
   ]);
-  return {counts:Object.fromEntries(counts.map(x=>[x.state,x._count._all])) as Partial<Record<JobState,number>>,jobs};
+  return {counts:Object.fromEntries(counts.map(x=>[x.state,x._count._all])) as Partial<Record<JobState,number>>,jobs,maxActive:vcDiscoveryActiveLimit()};
 }

@@ -22,7 +22,7 @@ const companyResearchSchema={
 };
 const portfolioCompaniesSchema={
   type:"object",additionalProperties:false,
-  properties:{companies:{type:"array",items:{type:"object",additionalProperties:false,properties:{name:{type:"string"},canonicalDomain:{type:"string"},sourceUrl:{type:"string"},passage:{type:"string"}},required:["name","canonicalDomain","sourceUrl","passage"]}}},
+  properties:{companies:{type:"array",items:{type:"object",additionalProperties:false,properties:{name:{type:"string"},canonicalDomain:{type:"string"},portfolioUrl:{type:"string"},officialUrl:{type:"string"},passage:{type:"string"}},required:["name","canonicalDomain","portfolioUrl","officialUrl","passage"]}}},
   required:["companies"]
 };
 const fundingSchema={
@@ -51,7 +51,7 @@ export async function answer(question:string,context:string){
 }
 
 export type OfficialPortfolioDiscovery={officialUrl:string;portfolioUrl:string;reason:string};
-export type PortfolioCompanyCandidate={name:string;canonicalDomain:string;sourceUrl:string;passage:string};
+export type PortfolioCompanyCandidate={name:string;canonicalDomain:string;portfolioUrl:string;officialUrl:string;passage:string};
 export type CompanyResearchSources={officialUrl:string;fundingUrls:string[];technicalUrls:string[]};
 export type FundingCandidate={stage:string;announcedAt:string;amount:string;currency:string;investors:string[];passage:string};
 export type ContributionCandidate={person:string;title:string;passage:string};
@@ -74,11 +74,11 @@ export async function extractPortfolioCompanies(investorName:string,body:string,
   const payload=await createResponse({
     model:process.env.OPENAI_EXTRACTION_MODEL??process.env.OPENAI_DISCOVERY_MODEL??"gpt-5.5",
     text:structured("portfolio_companies",portfolioCompaniesSchema),
-    instructions:"Extract only companies explicitly listed as portfolio companies for the named investor in the supplied source text. passage must be a short exact substring from that text. sourceUrl must be an exact URL from the supplied page-link list and the company's official site; use empty strings when unavailable. Exclude navigation brands, other investors, fund names, people, duplicates, and inferred companies.",
+    instructions:"Extract only companies explicitly listed as portfolio companies for the named investor in the supplied source text. passage must be a short exact substring from that text. portfolioUrl must be the exact corresponding URL from the supplied page-link list; it may be on the investor domain. officialUrl is optional: provide it only when it is also an exact page link and is on the company canonicalDomain; otherwise use empty strings for officialUrl and canonicalDomain. Exclude navigation brands, other investors, fund names, people, duplicates, and inferred companies.",
     input:"Investor: "+investorName+"\n\nSource text:\n"+body.slice(0,120_000)+"\n\nPage links:\n"+links.join("\n")
   },"Portfolio extraction");
   const value=parsedResponseJson(payload,"Portfolio extraction") as {companies?:unknown[]};
-  return Array.isArray(value.companies)?value.companies.flatMap(item=>{const candidate=item as Partial<PortfolioCompanyCandidate>;return typeof candidate?.name==="string"&&typeof candidate.canonicalDomain==="string"&&typeof candidate.sourceUrl==="string"&&typeof candidate.passage==="string"?[{name:candidate.name.trim(),canonicalDomain:candidate.canonicalDomain.trim(),sourceUrl:candidate.sourceUrl.trim(),passage:candidate.passage.trim()}]:[]}):[];
+  return Array.isArray(value.companies)?value.companies.flatMap(item=>{const candidate=item as Partial<PortfolioCompanyCandidate>;return typeof candidate?.name==="string"&&typeof candidate.canonicalDomain==="string"&&typeof candidate.portfolioUrl==="string"&&typeof candidate.officialUrl==="string"&&typeof candidate.passage==="string"?[{name:candidate.name.trim(),canonicalDomain:candidate.canonicalDomain.trim(),portfolioUrl:candidate.portfolioUrl.trim(),officialUrl:candidate.officialUrl.trim(),passage:candidate.passage.trim()}]:[]}):[];
 }
 
 export async function discoverCompanyResearchSources(name:string,domain:string):Promise<CompanyResearchSources>{

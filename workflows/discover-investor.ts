@@ -47,9 +47,10 @@ async function enrichPromotedCompanies(jobId:string,companyIds:string[]) {
   const results=[]; for(const companyId of companyIds) results.push(await enrichCompany(companyId)); return results;
 }
 
-async function finish(jobId:string,result:{extracted:number;promoted:number;companyIds:string[]}) {
+async function finish(jobId:string,result:{extracted:number;promoted:number;companyIds:string[];rejected:Record<string,number>;identityUnverified:number}) {
   "use step";
-  await db.job.update({where:{id:jobId},data:{state:"SUCCEEDED",leaseUntil:null,progress:`Portfolio source indexed; promoted ${result.promoted} evidence-backed companies from ${result.extracted} extracted candidates.`}});
+  const rejectionSummary=Object.entries(result.rejected).filter(([,count])=>count>0).map(([reason,count])=>`${reason}=${count}`).join(", ")||"none";
+  await db.job.update({where:{id:jobId},data:{state:"SUCCEEDED",leaseUntil:null,progress:`Portfolio source indexed; promoted ${result.promoted} evidence-backed companies from ${result.extracted} extracted candidates. Rejected: ${rejectionSummary}. Official identity unresolved: ${result.identityUnverified}.`}});
 }
 
 async function fail(jobId:string,message:string) {

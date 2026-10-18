@@ -24,11 +24,11 @@ Vercel and Prisma Postgres are the active application control plane. The legacy 
 
 ## Enqueue the October 2026 market-map batch
 
-`.github/workflows/enqueue-market-map.yml` is manually dispatched from GitHub Actions; a push never runs it. Add the direct Production Prisma Postgres connection string as the GitHub environment secret `DATABASE_URL` in the `production` environment. Then run **Enqueue market-map source fetches**. The action calls the idempotent batch script and prints only created/already-queued counts.
+`.github/workflows/enqueue-market-map.yml` is manually dispatched from GitHub Actions; a push never runs it. Add the direct Production Prisma Postgres connection string as the GitHub environment secret `DATABASE_URL` in the `production` environment. Then run **Enqueue market-map source fetches**. The action calls the idempotent batch script and prints only created/already-queued counts. In Vercel runtime environments, `DATABASE_URL` must instead use the `pooled.db.prisma.io` value; direct `db.prisma.io` URLs are for migrations/admin tooling only.
 
 ## Hobby-safe VC discovery
 
-After the market-map action has created pending jobs, the Collection screen's **Dispatch next 5 prepared VCs** control publishes up to five jobs to the Vercel Queue; **Dispatch 1 prepared VC** is the smaller fallback. Its private queue consumer starts a durable workflow that uses OpenAI web search to locate an investor's official portfolio page, fetches and indexes that page, then promotes only extracted company entries whose exact supporting passage exists in the stored source document. The dispatcher keeps Prisma as the durable backlog, permits only five queued/running VC discoveries at a time, and does not use Vercel Cron.
+After the market-map action has created pending jobs, the Collection screen's **Dispatch next 5 prepared VCs** control requests up to five jobs from the Vercel Queue; **Dispatch 1 prepared VC** is the smaller fallback. Its private queue consumer starts a durable workflow that uses OpenAI web search to locate an investor's official portfolio page, fetches and indexes that page, then promotes only extracted company entries whose exact supporting passage exists in the stored source document. The dispatcher keeps Prisma as the durable backlog. It permits five active discoveries only with a pooled Prisma runtime URL; a direct or unknown URL is deliberately limited to one. It does not use Vercel Cron.
 
 Vercel Queue itself needs no application secret. The deployed app still needs `DATABASE_URL` and `OPENAI_API_KEY`; `OPENAI_DISCOVERY_MODEL` and `OPENAI_EXTRACTION_MODEL` are optional and default to `gpt-5.5`.
 # Documentation

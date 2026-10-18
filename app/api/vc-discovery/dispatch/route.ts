@@ -12,7 +12,7 @@ export async function POST(request:Request) {
     const pending=(summary.counts.PENDING||0)+(summary.counts.FAILED||0);
     const active=(summary.counts.QUEUED||0)+(summary.counts.RUNNING||0);
     const message=pending
-      ? "VC jobs are waiting but all five discovery slots are active. Try again after one completes."
+      ? `VC jobs are waiting but all ${summary.maxActive} discovery slot${summary.maxActive===1?" is":"s are"} active. Try again after one completes.`
       : active
         ? "All available VC discovery work is already in progress."
         : "No market-map jobs are prepared. Prepare candidates through the explicit market-map batch before dispatching them.";
