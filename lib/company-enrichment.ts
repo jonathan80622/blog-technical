@@ -1,0 +1,39 @@
+import { db } from "@/lib/db";
+import { discoverCompanyResearchSources, extractContributionCandidates, extractFundingCandidates } from "@/lib/openai";
+import { runResearch } from "@/lib/research";
+
+const https=(value:string,domain:string) => { try { const url=new URL(value); return url.protocol==="https:"&&(url.hostname===domain||url.hostname.endsWith(`.${domain}`))?url.toString():null; } catch { return null; } };
+const exact=(passage:string,body:string)=>passage.length>=8&&passage.length<=1_200&&body.includes(passage);
+
+async function extractStoredSource(companyId:string,url:string,type:string) {
+  const source=await db.source.findUniqueOrThrow({where:{url}}); const document=await db.document.findUniqueOrThrow({where:{canonicalUrl:url},include:{versions:{orderBy:{createdAt:"desc"},take:1}}}); const version=document.versions[0]; if(!version) return;
+  if(type==="funding_announcement") for(const item of await extractFundingCandidates(version.body)) if(exact(item.passage,version.body)) {
+    const date=item.announcedAt?new Date(item.announcedAt):null; const announcedAt=date&&!Number.isNaN(date.valueOf())?date:null; const amount=item.amount?Number(item.amount):null;
+    const round=await db.fundingRound.findFirst({where:{companyId,stage:item.stage,announcedAt}}) ?? await db.fundingRound.create({data:{companyId,stage:item.stage,announcedAt,amount:Number.isFinite(amount)?amount:null,currency:item.currency||null,status:"CANDIDATE"}});
+    const claim=await db.claim.create({data:{companyId,fundingRoundId:round.id,predicate:"funding_announcement",value:{investors:item.investors,sourceId:source.id},status:"CANDIDATE"}}); await db.claimEvidence.create({data:{claimId:claim.id,documentVersionId:version.id,passage:item.passage}});
+    for(const name of item.investors) { const investor=await db.investor.findUnique({where:{name}}); if(investor) await db.roundInvestor.upsert({where:{fundingRoundId_investorId:{fundingRoundId:round.id,investorId:investor.id}},update:{sourceId:source.id},create:{fundingRoundId:round.id,investorId:investor.id,sourceId:source.id}}); }
+  }
+  if(type==="technical_article") for(const item of await extractContributionCandidates(version.body)) if(exact(item.passage,version.body)) {
+    const person=await db.person.findFirst({where:{name:item.person,canonicalUrl:null}}) ?? await db.person.create({data:{name:item.person}});
+    await db.affiliation.upsert({where:{personId_companyId_sourceId_passage:{personId:person.id,companyId,sourceId:source.id,passage:item.passage}},update:{},create:{personId:person.id,companyId,sourceId:source.id,observedAt:document.publishedAt,passage:item.passage}});
+    await db.contribution.upsert({where:{personId_sourceId_title_passage:{personId:person.id,sourceId:source.id,title:item.title,passage:item.passage}},update:{},create:{personId:person.id,companyId,sourceId:source.id,title:item.title,url, publishedAt:document.publishedAt,passage:item.passage}});
+  }
+}
+
+export async function enrichCompany(companyId:string) {
+  const company=await db.company.findUniqueOrThrow({where:{id:companyId}});
+  if(!company.canonicalDomain) return {companyId,official:false,funding:0,technical:0};
+  const discovered=await discoverCompanyResearchSources(company.name,company.canonicalDomain);
+  const tasks:["OFFICIAL_SITE"|"FUNDING_ROUNDS"|"TECHNICAL_SOURCES",string[],string][]=[
+    ["OFFICIAL_SITE",[discovered.officialUrl],"official_company_site"],
+    ["FUNDING_ROUNDS",discovered.fundingUrls,"funding_announcement"],
+    ["TECHNICAL_SOURCES",discovered.technicalUrls,"technical_article"]
+  ];
+  const results:Record<string,number>={OFFICIAL_SITE:0,FUNDING_ROUNDS:0,TECHNICAL_SOURCES:0};
+  for(const [taskType,urls,type] of tasks) for(const candidate of urls) {
+    const url=https(candidate,company.canonicalDomain); if(!url) continue;
+    try { await runResearch(url,`${company.name} ${type}`,undefined,{companyId}); await db.source.update({where:{url},data:{type}}); if(type!=="official_company_site") await extractStoredSource(companyId,url,type); results[taskType]++; } catch { /* Coverage records retain a scoped failure below. */ }
+  }
+  for(const [taskType] of tasks) await db.coverageCheck.update({where:{companyId_taskType:{companyId,taskType}},data:{outcome:results[taskType]?"VERIFIED":"SEARCHED_UNRESOLVED",reason:results[taskType]?`Indexed ${results[taskType]} official source(s).`:`No eligible official ${taskType.toLowerCase()} source was found.`,lastVerifiedAt:new Date()}});
+  return {companyId,official:results.OFFICIAL_SITE>0,funding:results.FUNDING_ROUNDS,technical:results.TECHNICAL_SOURCES};
+}

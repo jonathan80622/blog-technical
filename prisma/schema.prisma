@@ -66,8 +66,46 @@ model Company {
   fundingRounds FundingRound[]
   coverageChecks CoverageCheck[]
   claims Claim[]
+  affiliations Affiliation[]
+  contributions Contribution[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+model Person {
+  id String @id @default(cuid())
+  name String
+  canonicalUrl String? @unique
+  affiliations Affiliation[]
+  contributions Contribution[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([name,canonicalUrl])
+}
+model Affiliation {
+  id String @id @default(cuid())
+  personId String
+  companyId String
+  sourceId String
+  observedAt DateTime?
+  passage String
+  person Person @relation(fields:[personId],references:[id],onDelete:Cascade)
+  company Company @relation(fields:[companyId],references:[id],onDelete:Cascade)
+  source Source @relation(fields:[sourceId],references:[id],onDelete:Cascade)
+  @@unique([personId,companyId,sourceId,passage])
+}
+model Contribution {
+  id String @id @default(cuid())
+  personId String
+  companyId String
+  sourceId String
+  title String
+  url String?
+  publishedAt DateTime?
+  passage String
+  person Person @relation(fields:[personId],references:[id],onDelete:Cascade)
+  company Company @relation(fields:[companyId],references:[id],onDelete:Cascade)
+  source Source @relation(fields:[sourceId],references:[id],onDelete:Cascade)
+  @@unique([personId,sourceId,title,passage])
 }
 model EntityAlias {
   id String @id @default(cuid())
@@ -129,6 +167,8 @@ model Source {
   company Company? @relation(fields:[companyId],references:[id])
   documents Document[]
   portfolioRelationships PortfolioRelationship[]
+  affiliations Affiliation[]
+  contributions Contribution[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -166,6 +206,8 @@ model DocumentVersion {
   id String @id @default(cuid())
   documentId String
   body String
+  rawHtml String?
+  links Json?
   parserVersion String
   createdAt DateTime @default(now())
   document Document @relation(fields:[documentId],references:[id],onDelete:Cascade)

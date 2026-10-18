@@ -11,6 +11,9 @@ importers:
       '@prisma/client':
         specifier: 6.17.1
         version: 6.17.1(prisma@6.17.1(typescript@5.7.3))(typescript@5.7.3)
+      '@vercel/queue':
+        specifier: 0.8.0
+        version: 0.8.0
       next:
         specifier: 15.5.9
         version: 15.5.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)

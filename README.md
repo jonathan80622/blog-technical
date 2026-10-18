@@ -22,3 +22,9 @@ Vercel and Prisma Postgres are the active application control plane. The legacy 
 ## Enqueue the October 2026 market-map batch
 
 `.github/workflows/enqueue-market-map.yml` is manually dispatched from GitHub Actions; a push never runs it. Add the direct Production Prisma Postgres connection string as the GitHub environment secret `DATABASE_URL` in the `production` environment. Then run **Enqueue market-map source fetches**. The action calls the idempotent batch script and prints only created/already-queued counts.
+
+## Hobby-safe VC discovery
+
+After the market-map action has created pending jobs, the Collection screen's **Initiate next VC** button publishes exactly one job to the Vercel Queue. Its private queue consumer starts a durable workflow that uses OpenAI web search to locate an investor's official portfolio page, fetches and indexes that page, then promotes only extracted company entries whose exact supporting passage exists in the stored source document. The dispatcher keeps Prisma as the durable backlog and permits only one queued/running VC discovery at a time; it does not use Vercel Cron.
+
+Vercel Queue itself needs no application secret. The deployed app still needs `DATABASE_URL` and `OPENAI_API_KEY`; `OPENAI_DISCOVERY_MODEL` and `OPENAI_EXTRACTION_MODEL` are optional and default to `gpt-5.5`.
