@@ -1,0 +1,55 @@
+name: Company URL search persistence
+
+on:
+  push:
+    paths:
+      - 'features/company-url-search/**'
+      - 'app/api/company-url-search/**'
+      - 'prisma/**'
+      - 'tests/integration/company-url-search.postgres.test.ts'
+      - '.github/workflows/company-url-search.yml'
+  pull_request:
+    paths:
+      - 'features/company-url-search/**'
+      - 'app/api/company-url-search/**'
+      - 'prisma/**'
+      - 'tests/integration/company-url-search.postgres.test.ts'
+      - '.github/workflows/company-url-search.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: company_url_search_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/company_url_search_test
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma migrate deploy
+      - run: node --experimental-strip-types --test tests/integration/company-url-search.postgres.test.ts
