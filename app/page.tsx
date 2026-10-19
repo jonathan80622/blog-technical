@@ -14,7 +14,7 @@ function Content({view,data}:{view:string;data:Data}){if(view==="Investors")retu
 /** UI-ID: UI-INVESTORS-001
  * Backend: \`data.investors\` from app/api/overview/route.ts::GET.
  * Progress: displays persisted Investor and PortfolioRelationship counts; it starts no work. */
-function Investors({investors}:{investors:Data["investors"]}){return <><p className="section-intro">Investors define the research universe. Portfolio membership remains distinct from funding-round participation.</p><div className="cards">{investors.map(i=><article className="card" key={i.id}><p className="eyebrow">INVESTOR</p><h2>{i.name}</h2><p>{i.rationale||"No rationale recorded."}</p><b>{i.portfolioRelationships.length} evidence-backed portfolio links</b></article>)}</div></>}
+function Investors({investors}:{investors:Data["investors"]}){return <><p className="section-intro">Investors define the research universe. Portfolio membership remains distinct from funding-round participation.</p><div className="cards">{investors.map(i=><article className="card" key={i.id}><p className="eyebrow">INVESTOR</p><h2>{i.name}</h2><p>{i.rationale||"No rationale recorded."}</p><b>{i.portfolioRelationships.length} evidence-backed portfolio links</b><a href={"/company-urls?investorId="+encodeURIComponent(i.id)}>Find company websites</a></article>)}</div></>}
 /** UI-ID: UI-COMPANIES-001
  * Backend: \`data.companies\` from app/api/overview/route.ts::GET.
  * Progress: presents promoted Company records, not unreviewed extraction candidates. */

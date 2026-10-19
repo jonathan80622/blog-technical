@@ -377,3 +377,24 @@ model SourceRunEvent {
   sourceRun SourceRun @relation(fields:[sourceRunId],references:[id],onDelete:Cascade)
   @@index([sourceRunId,createdAt])
 }
+
+// Isolated web-search output. No relations to the collection/review pipeline.
+// investorId is a read-only identity reference; investorName preserves history.
+model CompanyUrlSearch {
+  id String @id @default(cuid())
+  investorId String
+  investorName String
+  model String
+  state String @default("SEARCHING")
+  links Json @default("[]")
+  resultCount Int @default(0)
+  rejectedCount Int @default(0)
+  notes String?
+  response Json?
+  responseId String?
+  error String?
+  expiresAt DateTime
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([investorId,createdAt])
+}

@@ -2,6 +2,10 @@
 
 Evidence-first research for a selected VC universe. The application keeps portfolio membership, funding-round participation, source documents, claims, and coverage checks as distinct records.
 
+## Independent company website search
+
+Use **Investors → Find company websites** (or `/company-urls`) to discover and save invested companies' website URLs using only OpenAI web search. This path has its own API, UI and persistence table; it does not invoke collection or indexing. See [setup, boundaries and removal instructions](docs/COMPANY-URL-SEARCH.md).
+
 The UI component/backend document-ID index is in
 [\`UI-COMPONENT-INDEX\`](docs/UI-COMPONENT-INDEX.md).
 
