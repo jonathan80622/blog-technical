@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
+    env:
+      APP_EXECUTION_MODE: hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

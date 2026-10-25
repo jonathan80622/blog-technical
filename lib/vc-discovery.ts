@@ -42,7 +42,8 @@ export async function returnVcDiscoveryJobToPending(jobId:string,error:string) {
 }
 
 export async function markVcDiscoveryDispatched(jobId:string) {
-  await db.outbox.updateMany({where:{jobId,deliveredAt:null},data:{deliveredAt:new Date(),deliveryAttempts:{increment:1},lastError:null}});
+  const recorded=await db.outbox.updateMany({where:{jobId,deliveredAt:null},data:{deliveredAt:new Date(),deliveryAttempts:{increment:1},lastError:null}});
+  if(recorded.count===0) throw new Error("Queue publish succeeded but its outbox record was not updated.");
 }
 
 /** A completed zero-promotion run must be explicitly replayed after a policy fix. */

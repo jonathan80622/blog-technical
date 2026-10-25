@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "db:seed": "node prisma/seed.mjs",
     "market-map:enqueue": "node scripts/enqueue-market-map.mjs",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@prisma/client": "6.17.1",
@@ -21,6 +22,7 @@
     "workflow": "^5.2.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "22.10.2",
     "@types/react": "19.0.2",
     "@types/react-dom": "19.0.2",

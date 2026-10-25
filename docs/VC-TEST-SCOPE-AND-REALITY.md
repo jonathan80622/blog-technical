@@ -1,7 +1,7 @@
 # VC collection test scope and real-world complexity
 
 **Document ID:** `TEST-VC-REALITY-001`  
-**Status:** current test truth; this document distinguishes implemented checks from unimplemented E2E coverage
+**Status:** current test truth; this document distinguishes local fixture/browser coverage from unimplemented live integration coverage
 
 ## Current truth: no live-deployment test exists
 
@@ -10,11 +10,14 @@ targets a deployed URL. The previous manual URL-based “smoke test” was remov
 the repository has no separate non-production deployment to target, and asking
 for one was an invented operational requirement.
 
-`Repository verification` runs only `pnpm test` and `pnpm build`. It proves
-source-level behavior, not a deployed queue handoff. It **does not prove**:
+Local verification now runs the Node contract tests, TypeScript checking, a
+Next.js production build, and Playwright browser tests with mocked API routes.
+These checks prove fixture-backed API/UI behavior, not a deployed queue
+handoff. They **do not prove**:
 
 | Not proven by repository verification | Why it can still fail after checks pass |
 | --- | --- |
+| UI behavior against live API handlers | Playwright stubs API responses to check button requests and visible states. It does not execute route handlers or durable database mutations. |
 | Official-site discovery | The workflow can fail in `findPortfolio`, as the five real jobs did. |
 | Raw Responses parser | The consumer can start and then misread a valid OpenAI response. |
 | Web-search result quality | Search may find an unofficial domain, no portfolio page, or an ambiguous entity. |
@@ -91,9 +94,11 @@ For a source that remains unresolved, the accepted terminal evidence is
 | Layer | Test artifact | Required outcome | Current state |
 | --- | --- | --- | --- |
 | Wire parser unit | `tests/responses-output.test.ts` | Nested raw Responses text, top-level fallback, incomplete diagnostics | Implemented and passing |
+| Backend/API contracts | `tests/backend-api.test.ts`, `tests/vc-discovery-api.test.ts`, `tests/safe-source-fetch.test.ts` | Input validation, process ordering, safe errors, AI acceptance evidence, queue compensation/tracking failures, public-address validation, redirect policy, and distinct trend counts | Implemented and passing locally |
+| Browser UI contract | `tests/e2e/control-to-api.spec.ts` | Every current UI action's request/result, visible state, source links, API errors, queue dispatch/replay, monitors, and phone-sized Collection | Implemented with mocked APIs; not backend proof |
 | Queue handoff | User-observed deployed VC dispatch | Exact returned job is claimed by consumer | Not automated |
 | Provider contract integration | OpenAI test using a captured/live response | Structured-output response parses against schema | Not yet implemented as a separate CI test |
-| Source adapter integration | Static fixture and JS-rendered fixture | Static fetch succeeds; JS page routes to renderer/unresolved policy | Not implemented |
+| Source adapter integration | Static fixture and JS-rendered fixture | Static fetch succeeds; JS page routes to renderer/unresolved policy | Not implemented. Fetch safety policy is unit-tested with injected DNS/transport; no live source adapter test exists. |
 | Workflow acceptance | Existing deployed application + a selected VC job | Terminal job plus exact evidence/coverage assertions | Not automated |
 | Load/retry test | Controlled five-job batch and duplicate delivery/failure injection | Capacity, idempotency, retry, and cost behavior | Not implemented |
 

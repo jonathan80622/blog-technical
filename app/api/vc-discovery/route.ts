@@ -5,5 +5,5 @@ export const runtime="nodejs";
 
 export async function GET() {
   try { return NextResponse.json(await vcDiscoverySummary()); }
-  catch(error) { return NextResponse.json({error:error instanceof Error?error.message:"Database unavailable."},{status:503}); }
+  catch { return NextResponse.json({error:"VC discovery records unavailable."},{status:503}); }
 }

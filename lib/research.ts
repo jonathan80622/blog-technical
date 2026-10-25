@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "crypto";
 import { db } from "@/lib/db";
 import { embed } from "@/lib/openai";
 import { assessSourceResponse } from "@/lib/decisions";
+import { UnresolvedSourceError } from "@/lib/source-outcome";
+import { fetchPublicSource } from "@/lib/safe-source-fetch";
 
 export const configuredSources = [
   { name:"Lux portfolio", url:"https://www.luxcapital.com/companies", type:"portfolio" },
@@ -23,16 +25,19 @@ export async function runResearch(url:string, label?:string, existingJobId?:stri
   await db.jobAttempt.create({data:{jobId:job.id,state:"RUNNING"}});
   try {
     const source=await db.source.upsert({where:{url},update:{type:"official_page",...(context?.investorId?{investorId:context.investorId}:{}),...(context?.companyId?{companyId:context.companyId}:{})},create:{url,type:"official_page",capabilities:["fetch","extract","index"],rationale:label ?? "User-requested research source",...(context?.investorId?{investorId:context.investorId}:{}),...(context?.companyId?{companyId:context.companyId}:{})}});
-    const response=await fetch(url,{headers:{"User-Agent":"VC-Intelligence research pilot (+human-reviewed)"},signal:AbortSignal.timeout(25_000)});
+    let allowedDomain=new URL(url).hostname;
+    if(context?.companyId){const company=await db.company.findUnique({where:{id:context.companyId},select:{canonicalDomain:true}});if(company?.canonicalDomain)allowedDomain=company.canonicalDomain;}
+    else if(context?.investorId){const investor=await db.investor.findUnique({where:{id:context.investorId},select:{canonicalDomain:true}});if(investor?.canonicalDomain)allowedDomain=investor.canonicalDomain;}
+    const response=await fetchPublicSource(url,{allowedDomain});
     if(!response.ok) throw new Error(`Source returned HTTP ${response.status}`);
-    const raw=await response.text(), body=clean(raw); if(body.length<120) throw new Error("Parsed page body was too short to index."); const title=pageTitle(raw); const publishedAt=pageDate(raw); const links=pageLinks(raw,url); await db.job.update({where:{id:job.id},data:{progress:"Checking source quality and loading behavior"}});
+    const raw=await response.text(), body=clean(raw); if(body.length<120) throw new UnresolvedSourceError("insufficient_content","Source assessment: insufficient_content (parsed page body was too short to index)."); const title=pageTitle(raw); const publishedAt=pageDate(raw); const links=pageLinks(raw,url); await db.job.update({where:{id:job.id},data:{progress:"Checking source quality and loading behavior"}});
     const hash=createHash("sha256").update(body).digest("hex");
     const document=await db.document.upsert({where:{canonicalUrl:url},update:{title:title ?? label ?? new URL(url).hostname,publishedAt,fetchedAt:new Date(),contentHash:hash,statusCode:response.status,responseContentType:response.headers.get("content-type")},create:{sourceId:source.id,canonicalUrl:url,title:title ?? label ?? new URL(url).hostname,publishedAt,contentHash:hash,statusCode:response.status,responseContentType:response.headers.get("content-type")}});
     const assessment=await assessSourceResponse(raw,body,url);
     await db.documentAssessment.create({data:{documentId:document.id,model:process.env.OPENAI_DECISIONS_MODEL ?? "gpt-6-luna",adapterVerdict:assessment.adapterVerdict,renderingVerdict:assessment.renderingVerdict,completenessVerdict:assessment.completenessVerdict,confidence:assessment.confidence,inputHash:assessment.inputHash}});
-    if(assessment.adapterVerdict==="unsafe_to_promote"||assessment.adapterVerdict==="insufficient_content") throw new Error(`Source assessment: ${assessment.adapterVerdict}.`);
-    if(assessment.renderingVerdict==="access_or_challenge") throw new Error("Source assessment: access or bot challenge detected.");
-    if(assessment.renderingVerdict==="needs_browser_render") throw new Error("Source assessment: browser rendering is required before extraction.");
+    if(assessment.adapterVerdict==="unsafe_to_promote"||assessment.adapterVerdict==="insufficient_content") throw new UnresolvedSourceError("insufficient_content",`Source assessment: ${assessment.adapterVerdict}.`);
+    if(assessment.renderingVerdict==="access_or_challenge") throw new UnresolvedSourceError("access_or_challenge","Source assessment: access or bot challenge detected.");
+    if(assessment.renderingVerdict==="needs_browser_render") throw new UnresolvedSourceError("browser_render_required","Source assessment: browser rendering is required before extraction.");
     const previous=await db.documentVersion.findFirst({where:{documentId:document.id},orderBy:{createdAt:"desc"}});
     if(!previous || previous.body !== body || previous.rawHtml !== raw) {
       const version=await db.documentVersion.create({data:{documentId:document.id,body,rawHtml:raw,links,parserVersion:"html-provenance-v2"}});

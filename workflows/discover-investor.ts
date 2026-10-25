@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { discoverOfficialPortfolio } from "@/lib/openai";
 import { runResearch } from "@/lib/research";
+import { unresolvedSourceReason } from "@/lib/source-outcome";
 import { promotePortfolioCompanies } from "@/lib/portfolio-promotion";
 import { enrichCompany } from "@/lib/company-enrichment";
 
@@ -32,7 +33,15 @@ async function findPortfolio(name:string) {
 async function collectPortfolio(jobId:string, investor:{name:string;investorId:string}, found:{portfolioUrl:string;reason:string}) {
   "use step";
   await db.job.update({where:{id:jobId},data:{progress:"Indexing verified official portfolio source"}});
-  await runResearch(found.portfolioUrl,`${investor.name} portfolio — ${found.reason}`,undefined,{investorId:investor.investorId});
+  try {
+    await runResearch(found.portfolioUrl,`${investor.name} portfolio — ${found.reason}`,undefined,{investorId:investor.investorId});
+    await db.source.update({where:{url:found.portfolioUrl},data:{type:"portfolio"}});
+    return {state:"INDEXED" as const};
+  } catch(error) {
+    const reason=unresolvedSourceReason(error);
+    if(!reason) throw error;
+    return {state:"SEARCHED_UNRESOLVED" as const,reason};
+  }
 }
 
 async function extractAndPromote(jobId:string,investor:{name:string;investorId:string},found:{portfolioUrl:string}) {
@@ -53,6 +62,11 @@ async function finish(jobId:string,result:{extracted:number;promoted:number;comp
   await db.job.update({where:{id:jobId},data:{state:"SUCCEEDED",leaseUntil:null,progress:`Portfolio source indexed; promoted ${result.promoted} evidence-backed companies from ${result.extracted} extracted candidates. Rejected: ${rejectionSummary}. Official identity unresolved: ${result.identityUnverified}.`}});
 }
 
+async function finishUnresolved(jobId:string,reason:string) {
+  "use step";
+  await db.job.update({where:{id:jobId},data:{state:"SUCCEEDED",leaseUntil:null,progress:`Portfolio source SEARCHED_UNRESOLVED: ${reason}. No extraction or promotion was attempted.`}});
+}
+
 async function fail(jobId:string,message:string) {
   "use step";
   await db.job.update({where:{id:jobId},data:{state:"FAILED",leaseUntil:null,progress:`Discovery failed: ${message}`}});
@@ -63,7 +77,8 @@ export async function discoverInvestorSources(jobId:string) {
   try {
     const investor=await loadJob(jobId);
     const found=await findPortfolio(investor.name);
-    await collectPortfolio(jobId,investor,found);
+    const collected=await collectPortfolio(jobId,investor,found);
+    if(collected.state==="SEARCHED_UNRESOLVED") { await finishUnresolved(jobId,collected.reason); return; }
     const result=await extractAndPromote(jobId,investor,found);
     await enrichPromotedCompanies(jobId,result.companyIds);
     await finish(jobId,result);

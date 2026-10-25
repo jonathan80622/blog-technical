@@ -12,5 +12,5 @@ export async function POST(request:Request) {
     return replayed
       ? NextResponse.json({state:"PENDING",message:"Promotion replay prepared. Dispatch one VC to start it."})
       : NextResponse.json({error:"Only a completed zero-promotion VC job can be replayed."},{status:409});
-  } catch(error) { return NextResponse.json({error:error instanceof Error?error.message:"Unable to prepare replay."},{status:503}); }
+  } catch { return NextResponse.json({error:"Replay service unavailable."},{status:503}); }
 }

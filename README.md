@@ -1,16 +1,30 @@
-# VC Intelligence
+# Startup AI investment evidence
 
-Evidence-first research for a selected VC universe. The application keeps portfolio membership, funding-round participation, source documents, claims, and coverage checks as distinct records.
+Evidence-first research into AI technologies startups are investing engineering effort in. Investor portfolios are a heuristic for finding startup candidates, not proof of high growth or AI investment. The workflow collects technical writing and hiring evidence, extracts reviewable AI signals, and compares accepted signals across distinct companies. Hiring demand and demonstrated technical use remain separate measures.
 
 The UI component/backend document-ID index is in
-[\`UI-COMPONENT-INDEX\`](docs/UI-COMPONENT-INDEX.md).
+[`UI-COMPONENT-INDEX`](docs/UI-COMPONENT-INDEX.md).
 
 ## Local setup
 
 1. Connect Prisma Postgres through the Vercel integration and enable the `vector` extension.
-2. Copy `.env.example` to `.env.local` and set `DATABASE_URL` and OpenAI credentials.
+2. Copy `.env.example` to `.env.local`; set `APP_EXECUTION_MODE=local`, `DATABASE_URL`, and OpenAI credentials.
 3. Run `npx pnpm@11 exec prisma migrate deploy`, then `npx pnpm@11 run db:seed`.
 4. Run `npx pnpm@11 run dev`.
+
+## Execution profiles
+
+`APP_EXECUTION_MODE` is the profile switch. Use `local` for development: source
+collection starts through the Workflow SDK, while VC discovery claims its
+database job and starts that same workflow directly. This path does not require
+Vercel Queue credentials. Use `hosted` for deployed application behavior:
+Vercel handles HTTP requests, durable workflows, and VC Queue delivery. GitHub
+Actions handles verification, production migrations, and the explicitly
+dispatched market-map enqueue; it is not an application runtime. Vercel is
+detected automatically when the variable is unset. Production builds outside
+Vercel must set the profile explicitly. GitHub verification selects `local`
+and runs unit/API tests, a production build, and Playwright with mocked browser
+APIs.
 
 The seed creates only the two selected investor records and their configured portfolio sources. It intentionally does **not** invent ten companies or funding facts; collection and review promote those from evidence.
 
@@ -35,3 +49,29 @@ Vercel Queue itself needs no application secret. The deployed app still needs `D
 
 The UI-to-backend state contract and its document-ID index are in
 [`DOC-UI-PROGRESS-001`](docs/UI-BACKEND-PROGRESS-CONTRACT.md).
+The workflow scenarios in Gherkin are in
+[`ai-investment.feature`](docs/ai-investment.feature).
+
+## Local verification
+
+From this directory, install dependencies and generate the Prisma client:
+
+```sh
+npx pnpm@11 install
+npx pnpm@11 exec prisma generate
+npx pnpm@11 exec playwright install chromium
+```
+
+Then run the backend contract tests, production build, and browser suite:
+
+```sh
+npm test
+npm run build
+npx playwright install chromium
+npm run test:e2e
+```
+
+The Playwright tests stub API responses to verify each UI control's request and
+visible result. They do not prove a real database write, queue delivery, durable
+workflow, or external provider run. Those require the configured local service
+credentials and a separate integration run.
