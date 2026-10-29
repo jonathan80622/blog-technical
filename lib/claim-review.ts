@@ -1,4 +1,5 @@
 import { supportedSignals } from './ai-signals.ts';
+import { emitTestTrace } from './test-trace.ts';
 export type ReviewStatus = 'CANDIDATE' | 'ACCEPTED' | 'REJECTED' | 'CONFLICTING';
 export class ReviewError extends Error {
   status: number;
@@ -20,15 +21,22 @@ export function validateAiAcceptance(claim: {
 export function claimReviewHandler(review: (id: string, status: ReviewStatus, note: string | null) => Promise<unknown>) {
   return async (request: Request, context: {params: Promise<{id: string}>}): Promise<Response> => {
     let input: unknown;
-    try { input = await request.json(); } catch { return Response.json({error: 'Invalid JSON body.'}, {status: 400}); }
-    if (!input || typeof input !== 'object' || Array.isArray(input)) return Response.json({error: 'Expected an object.'}, {status: 400});
+    const effects: unknown[] = [];
+    const respond = (body: unknown, status = 200) => { emitTestTrace({handler: 'claimReviewHandler', input, effects, response: {status, body}}); return Response.json(body, {status}); };
+    try { input = await request.json(); } catch { return respond({error: 'Invalid JSON body.'}, 400); }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return respond({error: 'Expected an object.'}, 400);
     const {status, reviewNote} = input as Record<string, unknown>;
-    if (!['CANDIDATE', 'ACCEPTED', 'REJECTED', 'CONFLICTING'].includes(status as string)) return Response.json({error: 'Invalid claim status.'}, {status: 400});
-    if (reviewNote !== undefined && (typeof reviewNote !== 'string' || reviewNote.length > 5000)) return Response.json({error: 'reviewNote must be text of at most 5000 characters.'}, {status: 400});
+    if (!['CANDIDATE', 'ACCEPTED', 'REJECTED', 'CONFLICTING'].includes(status as string)) return respond({error: 'Invalid claim status.'}, 400);
+    if (reviewNote !== undefined && (typeof reviewNote !== 'string' || reviewNote.length > 5000)) return respond({error: 'reviewNote must be text of at most 5000 characters.'}, 400);
     try {
-      return Response.json(await review((await context.params).id, status as ReviewStatus, (reviewNote as string | undefined)?.trim() || null));
+      const id = (await context.params).id;
+      const reviewInput = {id, status: status as ReviewStatus, reviewNote: (reviewNote as string | undefined)?.trim() || null};
+      const output = await review(reviewInput.id, reviewInput.status, reviewInput.reviewNote);
+      effects.push({operation: 'review', input: reviewInput, output});
+      return respond(output);
     } catch (error) {
-      return Response.json({error: error instanceof ReviewError ? error.message : 'Claim review service unavailable.'}, {status: error instanceof ReviewError ? error.status : 503});
+      effects.push({operation: 'review', threw: error instanceof Error ? error.message : String(error)});
+      return respond({error: error instanceof ReviewError ? error.message : 'Claim review service unavailable.'}, error instanceof ReviewError ? error.status : 503);
     }
   };
 }

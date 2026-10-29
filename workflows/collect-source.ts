@@ -1,13 +1,8 @@
-import { extractStoredSource } from "@/lib/company-enrichment";
-import { db } from "@/lib/db";
-import { event } from "@/lib/source-runs";
-import { runResearch } from "@/lib/research";
-import { hostnameMatchesDomain } from "@/lib/safe-source-fetch";
-import { promotePortfolioCompanies } from "@/lib/portfolio-promotion";
-import { enrichCompany } from "@/lib/company-enrichment";
-
 async function collectAttempt(sourceRunId:string,maxAttempts:number){
   "use step";
+  const [{ db }, { event }, { runResearch }, { hostnameMatchesDomain }, { promotePortfolioCompanies }, { extractStoredSource, enrichCompany }] = await Promise.all([
+    import("@/lib/db"), import("@/lib/source-runs"), import("@/lib/research"), import("@/lib/safe-source-fetch"), import("@/lib/portfolio-promotion"), import("@/lib/company-enrichment"),
+  ]);
   const sourceRun=await db.sourceRun.findUniqueOrThrow({where:{id:sourceRunId}});
   await db.sourceRun.update({where:{id:sourceRunId},data:{attempts:0}});
   await event(sourceRunId,"FETCHING","Fetching",`Fetching ${sourceRun.url} with a maximum of ${maxAttempts} direct fetch attempts.`,{requestedUrl:sourceRun.url,maxAttempts});
@@ -43,12 +38,23 @@ async function collectAttempt(sourceRunId:string,maxAttempts:number){
 
 async function getSourceRun(sourceRunId:string){
   "use step";
+  const { db } = await import("@/lib/db");
   return db.sourceRun.findUniqueOrThrow({where:{id:sourceRunId},select:{url:true,maxAttempts:true}});
 }
 
 async function record(sourceRunId:string,state:"VERIFIED"|"FAILED",stage:string,message:string,metadata?:object){
   "use step";
+  const { event } = await import("@/lib/source-runs");
   await event(sourceRunId,state,stage,message,metadata);
+}
+
+async function recordFailure(sourceRunId:string, sourceUrl:string, message:string, details?:{fetchAttemptCount?:number;finalUrl?:string;fetchOutcome?:string;status?:number;requestedUrl?:string}) {
+  "use step";
+  const [{ db }, { event }] = await Promise.all([import("@/lib/db"), import("@/lib/source-runs")]);
+  const current=await db.sourceRun.findUnique({where:{id:sourceRunId},select:{attempts:true}});
+  const attemptCount=details?.fetchAttemptCount??current?.attempts??0;
+  if(details?.fetchAttemptCount!==undefined)await db.sourceRun.update({where:{id:sourceRunId},data:{attempts:attemptCount}});
+  await event(sourceRunId,"FAILED","Failed",message,{requestedUrl:details?.requestedUrl??sourceUrl,finalUrl:details?.finalUrl,attemptCount,outcome:details?.fetchOutcome??"collection_failed",httpStatus:details?.status});
 }
 
 export async function collectSource(sourceRunId:string){
@@ -61,10 +67,7 @@ export async function collectSource(sourceRunId:string){
   } catch(error) {
     const message=error instanceof Error?error.message:"Unknown collection error";
     const details=error&&typeof error==="object"?error as {fetchAttemptCount?:number;finalUrl?:string;fetchOutcome?:string;status?:number;requestedUrl?:string}:undefined;
-    const current=await db.sourceRun.findUnique({where:{id:sourceRunId},select:{attempts:true}});
-    const attemptCount=details?.fetchAttemptCount??current?.attempts??0;
-    if(details?.fetchAttemptCount!==undefined)await db.sourceRun.update({where:{id:sourceRunId},data:{attempts:attemptCount}});
-    await record(sourceRunId,"FAILED","Failed",message,{requestedUrl:details?.requestedUrl??sourceRun.url,finalUrl:details?.finalUrl,attemptCount,outcome:details?.fetchOutcome??"collection_failed",httpStatus:details?.status});
+    await recordFailure(sourceRunId,sourceRun.url,message,details);
     throw error;
   }
 }

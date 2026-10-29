@@ -9,9 +9,11 @@
     "lint": "next lint",
     "postinstall": "prisma generate",
     "db:seed": "node prisma/seed.mjs",
+    "audit:tests": "node scripts/run-test-audit.mjs",
+    "audit:all": "node scripts/run-test-audit.mjs --all",
     "market-map:enqueue": "node scripts/enqueue-market-map.mjs",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:e2e": "playwright test"
+    "test": "node scripts/run-test-audit.mjs",
+    "test:e2e": "node scripts/run-test-audit.mjs --browser"
   },
   "dependencies": {
     "@prisma/client": "6.17.1",

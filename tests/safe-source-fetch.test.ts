@@ -2,10 +2,27 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fetchPublicSource, hostnameMatchesDomain, resolvePublicAddress, SourceFetchError } from "../lib/safe-source-fetch.ts";
 
-test("Given a verified root domain, Then only that host and its subdomains match", () => {
+test("Given a verified root domain, Then its conventional www spelling and subdomains match but lookalikes do not", () => {
   assert.equal(hostnameMatchesDomain("www.amplifypartners.com", "amplifypartners.com"), true);
+  assert.equal(hostnameMatchesDomain("amplifypartners.com", "www.amplifypartners.com"), true);
   assert.equal(hostnameMatchesDomain("amplifypartners.com.evil.example", "amplifypartners.com"), false);
   assert.equal(hostnameMatchesDomain("evilamplifypartners.com", "amplifypartners.com"), false);
+});
+
+test("Given an official www URL, When it redirects to the apex, Then collection retains the verified-domain boundary", async () => {
+  const requested: string[] = [];
+  const response = await fetchPublicSource("https://www.acme.example/portfolio", {
+    allowedDomain: "www.acme.example",
+    resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+    request: async url => {
+      requested.push(url.toString());
+      return url.hostname === "www.acme.example"
+        ? { status: 301, headers: { location: "https://acme.example/portfolio" }, body: Buffer.alloc(0) }
+        : { status: 200, headers: {}, body: Buffer.from("portfolio") };
+    },
+  });
+  assert.equal(response.ok, true);
+  assert.deepEqual(requested, ["https://www.acme.example/portfolio", "https://acme.example/portfolio"]);
 });
 
 test("Given a public hostname, When it resolves, Then the request uses a pinned public address", async () => {

@@ -70,6 +70,35 @@ that require explicit capability routing, a renderer, or a bounded unresolved
 coverage result; repeating the same static-fetch step three times does not make
 a JavaScript-rendered page become static HTML.
 
+## URL-equivalence regression fixtures
+
+The portfolio-discovery workflow must distinguish URL normalization from an
+assertion that two independently discovered sites are the same official site.
+The following fixtures define that boundary. “Verify” means retain both URLs
+and establish the relationship through a redirect, fetched content, or an
+explicit canonical declaration; normalization alone must not treat a different
+registrable domain as trusted.
+
+| Regression fixture | Example | Source | Recommendation |
+| --- | --- | --- | --- |
+| `www` / apex | `www.example.com` vs `example.com` | MDN | Accept as a likely site match, subject to verification. |
+| Host capitalization | `EXAMPLE.com` vs `example.com` | RFC 3986 | Normalize automatically. |
+| Default HTTPS port | `example.com:443` vs `example.com` | RFC 3986 | Normalize automatically. |
+| Empty vs `/` path | `example.com` vs `example.com/` | RFC 3986 | Normalize automatically. |
+| Percent-encoded unreserved characters | `/port%66olio` vs `/portfolio` | RFC 3986 | Normalize automatically. |
+| Dot segments | `/about/../portfolio` vs `/portfolio` | RFC 3986 | Normalize automatically. |
+| HTTP / HTTPS | `http://example.com` vs `https://example.com` | Google | Verify redirect or content equivalence. |
+| Domain migration | `oldfirm.com` → `newfirm.com` | Google | Record a verified redirect relationship. |
+| Canonical tag | Page declares another URL as canonical | Google | Use as supporting evidence. |
+| Filtered pages | `/portfolio?sector=AI` vs `/portfolio` | Google | Recognize the relationship but preserve filter semantics. |
+| Mobile website | `m.example.com` vs `example.com` | Google | Verify canonical relationship. |
+
+The current `findPortfolio()` failure is covered by the first row when the
+model supplies an apex portfolio URL and a `www` homepage (or the reverse).
+This is a bug-reproduction fixture: it is not evidence that a prior version
+worked, but a fixed input that must pass once the intended normalization policy
+is implemented.
+
 ## Live acceptance evidence
 
 The first live verification must be an explicit, user-observed run through the

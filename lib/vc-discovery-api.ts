@@ -10,35 +10,40 @@ type Dependencies = {
   returnToPending: (jobId: string, message: string) => Promise<void>;
 };
 
-const unavailable = () => Response.json({ error: "VC discovery service unavailable." }, { status: 503 });
-
 /** HTTP boundary for the two supported dispatch actions shown in Collection. */
 export function vcDiscoveryDispatchHandler(deps: Dependencies) {
   const mode = deps.mode ?? "hosted";
   return async (request: Request): Promise<Response> => {
     let input: unknown;
+    const effects: unknown[] = [];
+    const respond = (body: unknown, status = 200) => {
+      emitTestTrace({handler: 'vcDiscoveryDispatchHandler', input, effects, response: {status, body}});
+      return Response.json(body, {status});
+    };
+    const unavailable = () => respond({ error: "VC discovery service unavailable." }, 503);
     try {
       input = await request.json();
     } catch {
-      return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+      return respond({ error: "Invalid JSON body." }, 400);
     }
     if (!input || typeof input !== "object" || Array.isArray(input)) {
-      return Response.json({ error: "Expected an object." }, { status: 400 });
+      return respond({ error: "Expected an object." }, 400);
     }
     const limit = (input as Record<string, unknown>).limit;
     if (limit !== 1 && limit !== 5) {
-      return Response.json({ error: "limit must be 1 or 5." }, { status: 400 });
+      return respond({ error: "limit must be 1 or 5." }, 400);
     }
 
     let jobs: DiscoveryJob[];
     try {
-      jobs = await deps.lease(limit);
-    } catch {
+      jobs = await deps.lease(limit); effects.push({operation: 'lease', input: {limit}, output: jobs});
+    } catch (error) {
+      effects.push({operation: 'lease', input: {limit}, threw: error instanceof Error ? error.message : String(error)});
       return unavailable();
     }
     if (!jobs.length) {
       try {
-        const summary = await deps.summary();
+        const summary = await deps.summary(); effects.push({operation: 'summary', output: summary});
         const pending = (summary.counts.PENDING || 0) + (summary.counts.FAILED || 0);
         const active = (summary.counts.QUEUED || 0) + (summary.counts.RUNNING || 0);
         const message = pending
@@ -46,8 +51,9 @@ export function vcDiscoveryDispatchHandler(deps: Dependencies) {
           : active
             ? "All available VC discovery work is already in progress."
             : "No market-map jobs are prepared. Prepare candidates through the explicit market-map batch before dispatching them.";
-        return Response.json({ state: "IDLE", message });
-      } catch {
+        return respond({ state: "IDLE", message });
+      } catch (error) {
+        effects.push({operation: 'summary', threw: error instanceof Error ? error.message : String(error)});
         return unavailable();
       }
     }
@@ -58,20 +64,24 @@ export function vcDiscoveryDispatchHandler(deps: Dependencies) {
     let trackingFailureCount = 0;
     for (const job of jobs) {
       try {
-        await deps.send(job.id);
+        await deps.send(job.id); effects.push({operation: 'send', input: {jobId: job.id}});
         queued.push(job.id);
-      } catch {
+      } catch (error) {
+        effects.push({operation: 'send', input: {jobId: job.id}, threw: error instanceof Error ? error.message : String(error)});
         failedJobCount++;
         try {
-          await deps.returnToPending(job.id, mode === "local" ? "Local workflow start failed; job returned to pending." : "Queue dispatch failed; job returned to pending.");
-        } catch {
+          const message = mode === "local" ? "Local workflow start failed; job returned to pending." : "Queue dispatch failed; job returned to pending.";
+          await deps.returnToPending(job.id, message); effects.push({operation: 'returnToPending', input: {jobId: job.id, message}});
+        } catch (error) {
+          effects.push({operation: 'returnToPending', input: {jobId: job.id}, threw: error instanceof Error ? error.message : String(error)});
           compensationFailureCount++;
         }
         continue;
       }
       try {
-        await deps.markDispatched(job.id);
-      } catch {
+        await deps.markDispatched(job.id); effects.push({operation: 'markDispatched', input: {jobId: job.id}});
+      } catch (error) {
+        effects.push({operation: 'markDispatched', input: {jobId: job.id}, threw: error instanceof Error ? error.message : String(error)});
         // Delivery or the local workflow start succeeded. Keep its state for the
         // active worker; resetting it to PENDING could start duplicate work.
         trackingFailureCount++;
@@ -79,7 +89,7 @@ export function vcDiscoveryDispatchHandler(deps: Dependencies) {
     }
 
     if (!queued.length) {
-      return Response.json({
+      return respond({
         state: "FAILED",
         mode,
         error: compensationFailureCount
@@ -90,9 +100,9 @@ export function vcDiscoveryDispatchHandler(deps: Dependencies) {
         failedJobCount,
         compensationFailureCount,
         trackingFailureCount,
-      }, { status: 503 });
+      }, 503);
     }
-    return Response.json({
+    return respond({
       state: failedJobCount || trackingFailureCount ? "PARTIAL" : mode === "local" ? "STARTED" : "QUEUED",
       mode,
       jobIds: queued,
@@ -109,6 +119,7 @@ export function vcDiscoveryDispatchHandler(deps: Dependencies) {
             ? "Some local workflows could not be started; failed jobs were returned to pending where possible."
             : "Some jobs could not be queued; failed jobs were returned to pending where possible."
           : undefined,
-    }, { status: 202 });
+    }, 202);
   };
 }
+import { emitTestTrace } from './test-trace.ts';

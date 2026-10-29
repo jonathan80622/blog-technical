@@ -85,7 +85,7 @@ function isPublicAddress(address: string): boolean {
 }
 
 function normalizeHostname(hostname: string): string {
-  return hostname.toLowerCase().replace(/\.$/, "");
+  return hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
 }
 
 export function hostnameMatchesDomain(hostname: string, domain: string): boolean {

@@ -1,19 +1,6 @@
-import { db } from "@/lib/db";
-import { discoverOfficialPortfolio } from "@/lib/openai";
-import { runResearch } from "@/lib/research";
-import { unresolvedSourceReason } from "@/lib/source-outcome";
-import { promotePortfolioCompanies } from "@/lib/portfolio-promotion";
-import { enrichCompany } from "@/lib/company-enrichment";
-
-const officialUrl=(value:string,label:string) => {
-  let url:URL;
-  try { url=new URL(value); } catch { throw new Error(`${label} is not a URL.`); }
-  if(url.protocol!=="https:") throw new Error(`${label} must use HTTPS.`);
-  return url;
-};
-
 async function loadJob(jobId:string) {
   "use step";
+  const { db } = await import("@/lib/db");
   const job=await db.job.findUniqueOrThrow({where:{id:jobId}});
   const payload=job.payload as {name?:unknown}|null;
   if(typeof payload?.name!=="string"||!payload.name.trim()) throw new Error("VC discovery job has no investor name.");
@@ -23,15 +10,15 @@ async function loadJob(jobId:string) {
 
 async function findPortfolio(name:string) {
   "use step";
+  const [{ discoverOfficialPortfolio }, { verifiedOfficialPortfolioUrls }] = await Promise.all([import("@/lib/openai"), import("@/lib/official-portfolio-url")]);
   const found=await discoverOfficialPortfolio(name);
-  const official=officialUrl(found.officialUrl,"Official URL");
-  const portfolio=officialUrl(found.portfolioUrl,"Portfolio URL");
-  if(portfolio.hostname!==official.hostname && !portfolio.hostname.endsWith(`.${official.hostname}`)) throw new Error("Portfolio URL is not on the official investor domain.");
+  const { portfolio }=verifiedOfficialPortfolioUrls(found.officialUrl,found.portfolioUrl);
   return {portfolioUrl:portfolio.toString(),reason:found.reason};
 }
 
 async function collectPortfolio(jobId:string, investor:{name:string;investorId:string}, found:{portfolioUrl:string;reason:string}) {
   "use step";
+  const [{ db }, { runResearch }, { unresolvedSourceReason }] = await Promise.all([import("@/lib/db"), import("@/lib/research"), import("@/lib/source-outcome")]);
   await db.job.update({where:{id:jobId},data:{progress:"Indexing verified official portfolio source"}});
   try {
     await runResearch(found.portfolioUrl,`${investor.name} portfolio — ${found.reason}`,undefined,{investorId:investor.investorId});
@@ -46,29 +33,34 @@ async function collectPortfolio(jobId:string, investor:{name:string;investorId:s
 
 async function extractAndPromote(jobId:string,investor:{name:string;investorId:string},found:{portfolioUrl:string}) {
   "use step";
+  const [{ db }, { promotePortfolioCompanies }] = await Promise.all([import("@/lib/db"), import("@/lib/portfolio-promotion")]);
   await db.job.update({where:{id:jobId},data:{progress:"Extracting evidence-backed portfolio companies"}});
   return promotePortfolioCompanies({investorId:investor.investorId,investorName:investor.name,portfolioUrl:found.portfolioUrl});
 }
 
 async function enrichPromotedCompanies(jobId:string,companyIds:string[]) {
   "use step";
+  const [{ db }, { enrichCompany }] = await Promise.all([import("@/lib/db"), import("@/lib/company-enrichment")]);
   await db.job.update({where:{id:jobId},data:{progress:"Collecting official company, funding, and technical sources"}});
   const results=[]; for(const companyId of companyIds) results.push(await enrichCompany(companyId)); return results;
 }
 
 async function finish(jobId:string,result:{extracted:number;promoted:number;companyIds:string[];rejected:Record<string,number>;identityUnverified:number}) {
   "use step";
+  const { db } = await import("@/lib/db");
   const rejectionSummary=Object.entries(result.rejected).filter(([,count])=>count>0).map(([reason,count])=>`${reason}=${count}`).join(", ")||"none";
   await db.job.update({where:{id:jobId},data:{state:"SUCCEEDED",leaseUntil:null,progress:`Portfolio source indexed; promoted ${result.promoted} evidence-backed companies from ${result.extracted} extracted candidates. Rejected: ${rejectionSummary}. Official identity unresolved: ${result.identityUnverified}.`}});
 }
 
 async function finishUnresolved(jobId:string,reason:string) {
   "use step";
+  const { db } = await import("@/lib/db");
   await db.job.update({where:{id:jobId},data:{state:"SUCCEEDED",leaseUntil:null,progress:`Portfolio source SEARCHED_UNRESOLVED: ${reason}. No extraction or promotion was attempted.`}});
 }
 
 async function fail(jobId:string,message:string) {
   "use step";
+  const { db } = await import("@/lib/db");
   await db.job.update({where:{id:jobId},data:{state:"FAILED",leaseUntil:null,progress:`Discovery failed: ${message}`}});
 }
 

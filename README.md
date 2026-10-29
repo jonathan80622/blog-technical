@@ -23,8 +23,8 @@ Actions handles verification, production migrations, and the explicitly
 dispatched market-map enqueue; it is not an application runtime. Vercel is
 detected automatically when the variable is unset. Production builds outside
 Vercel must set the profile explicitly. GitHub verification selects `local`
-and runs unit/API tests, a production build, and Playwright with mocked browser
-APIs.
+and runs unit/API tests, a production build, and database-backed Playwright
+journeys.
 
 The seed creates only the two selected investor records and their configured portfolio sources. It intentionally does **not** invent ten companies or funding facts; collection and review promote those from evidence.
 
@@ -68,10 +68,22 @@ Then run the backend contract tests, production build, and browser suite:
 npm test
 npm run build
 npx playwright install chromium
-npm run test:e2e
+E2E_DATABASE_URL='postgresql://…/vc_intelligence_e2e' npm run test:e2e
 ```
 
-The Playwright tests stub API responses to verify each UI control's request and
-visible result. They do not prove a real database write, queue delivery, durable
-workflow, or external provider run. Those require the configured local service
-credentials and a separate integration run.
+The Playwright suite requires `E2E_DATABASE_URL`: a disposable PostgreSQL
+database whose name ends in `_e2e`. It applies migrations, clears the database
+between scenarios, seeds only the evidence required by the scenario, and drives
+the browser through the real Next API handlers. Queue delivery and durable
+workflow execution remain integration concerns; the E2E suite covers their
+persisted handoff and monitoring contract instead of faking responses in the
+browser.
+
+## Runtime test audit
+
+Run `npm test`. It discovers every `*.test.ts` and `*.spec.ts` below `tests/`
+at run time, then opens a separate **Live test execution** window at
+`http://127.0.0.1:4319`. The main product UI is not involved. The window
+streams each discovered test file and test result as it runs; use
+`npm run audit:all` to include browser specs. See
+[`BEHAVIOR-TRACEABILITY.md`](docs/BEHAVIOR-TRACEABILITY.md).

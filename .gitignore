@@ -9,3 +9,4 @@ node_modules
 /.swc
 test-results/
 playwright-report/
+artifacts/
