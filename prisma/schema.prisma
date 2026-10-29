@@ -181,6 +181,7 @@ model Document {
   fetchedAt DateTime @default(now())
   statusCode Int?
   responseContentType String?
+  finalUrl String?
   contentHash String
   snapshotKey String?
   source Source @relation(fields:[sourceId],references:[id])
@@ -300,6 +301,12 @@ model JobAttempt {
   jobId String
   state JobState
   error String?
+  requestedUrl String?
+  finalUrl String?
+  httpStatus Int?
+  attemptCount Int @default(0)
+  fetchOutcome String?
+  fetchAttempts Json?
   startedAt DateTime @default(now())
   finishedAt DateTime?
   job Job @relation(fields:[jobId],references:[id],onDelete:Cascade)

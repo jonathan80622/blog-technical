@@ -15,6 +15,7 @@ test("coverage distinguishes a completed empty search from failed or partial col
   assert.deepEqual(sourceCoverageResult("TECHNICAL_SOURCES",2,1,1),{
     outcome:"FAILED",reason:"Indexed 1 of 2 eligible official source(s); 1 source attempt(s) failed."
   });
+  assert.equal(sourceCoverageResult("TECHNICAL_SOURCES",1,0,0).outcome,"SEARCHED_UNRESOLVED");
   assert.deepEqual(sourceCoverageResult("TECHNICAL_SOURCES",1,1,0),{
     outcome:"VERIFIED",reason:"Indexed 1 eligible official source(s)."
   });

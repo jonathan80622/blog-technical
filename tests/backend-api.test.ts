@@ -45,6 +45,19 @@ test('Given AI evidence, Then acceptance checks exact passage, company identity 
   const noEvidence=signal(); noEvidence.evidence=[];
   for(const claim of [invented,wrongCompany,wrongKind,noEvidence]) assert.throws(()=>validateAiAcceptance(claim),ReviewError);
 });
+test('Search snippet metadata cannot replace a directly fetched technical passage',()=>{
+  const technicalPassage='We deploy retrieval augmented generation in production.';
+  const fetchedBody='This page only announces a company picnic.';
+  for(const snippet of ['',technicalPassage,'An elaborate description of production AI systems.']) {
+    const claim=signal() as ReturnType<typeof signal> & {discoverySnippet:string};
+    claim.discoverySnippet=snippet;
+    claim.evidence[0].documentVersion.body=fetchedBody;
+    assert.throws(()=>validateAiAcceptance(claim),ReviewError);
+  }
+  const claim=signal();
+  claim.evidence[0].documentVersion.body=`Article body: ${technicalPassage}`;
+  assert.doesNotThrow(()=>validateAiAcceptance(claim));
+});
 test('Given review API input, Then validation precedes mutation and expected errors retain status',async()=>{
   let calls=0;
   const handler=claimReviewHandler(async(id,status,note)=>{calls++; if(id==='missing')throw new ReviewError('Claim not found.',404); return {id,status,note};});

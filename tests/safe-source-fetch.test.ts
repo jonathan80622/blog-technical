@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchPublicSource, hostnameMatchesDomain, resolvePublicAddress } from "../lib/safe-source-fetch.ts";
+import { fetchPublicSource, hostnameMatchesDomain, resolvePublicAddress, SourceFetchError } from "../lib/safe-source-fetch.ts";
 
 test("Given a verified root domain, Then only that host and its subdomains match", () => {
   assert.equal(hostnameMatchesDomain("www.amplifypartners.com", "amplifypartners.com"), true);
@@ -70,4 +70,88 @@ test("Given a redirect that resolves to a private address, Then it is rejected b
     },
   }), /only to public IP addresses/);
   assert.deepEqual(requested, ["acme.example"]);
+});
+
+const publicResolve = async () => [{ address: "93.184.216.34", family: 4 }];
+const requestedUrl = "https://acme.example/blog/original";
+const finalUrl = "https://acme.example/blog/final";
+
+test("Redirected fetch records the final URL and counts each direct attempt once", async () => {
+  const requested: string[] = [];
+  const response = await fetchPublicSource(requestedUrl, {
+    maxAttempts: 3,
+    resolve: publicResolve,
+    request: async url => {
+      requested.push(url.toString());
+      return url.toString() === requestedUrl
+        ? { status: 302, headers: { location: finalUrl }, body: Buffer.alloc(0) }
+        : { status: 200, headers: {}, body: Buffer.from("Fetched article") };
+    },
+  });
+  assert.deepEqual(requested, [requestedUrl, finalUrl]);
+  assert.equal(response.finalUrl, finalUrl);
+  assert.equal(response.attemptCount, 1);
+  assert.deepEqual(response.attempts.map(a => a.requests), [[
+    { url: requestedUrl, status: 302 }, { url: finalUrl, status: 200 },
+  ]]);
+});
+
+test("Transient network, timeout, 429, and 5xx failures retry within the configured bound", async () => {
+  for (const failure of ["ECONNRESET", "ETIMEDOUT", 408, 429, 503] as const) {
+    let calls = 0;
+    const response = await fetchPublicSource(requestedUrl, {
+      maxAttempts: 2,
+      resolve: publicResolve,
+      request: async () => {
+        calls++;
+        if (calls === 1) {
+          if (typeof failure === "string") throw Object.assign(new Error(failure), { code: failure });
+          return { status: failure, headers: {}, body: Buffer.alloc(0) };
+        }
+        return { status: 200, headers: {}, body: Buffer.from("Fetched article") };
+      },
+    });
+    assert.equal(calls, 2, String(failure));
+    assert.equal(response.attemptCount, 2, String(failure));
+    assert.deepEqual(response.attempts.map(a => a.attempt), [1, 2]);
+    assert.equal(response.outcome, "success");
+  }
+});
+
+test("Permanent 4xx stops after one attempt and never verifies the source", async () => {
+  let calls = 0;
+  const response = await fetchPublicSource(requestedUrl, {
+    maxAttempts: 3,
+    resolve: publicResolve,
+    request: async () => { calls++; return { status: 404, headers: {}, body: Buffer.alloc(0) }; },
+  });
+  assert.equal(calls, 1);
+  assert.equal(response.attemptCount, 1);
+  assert.equal(response.ok, false);
+  assert.equal(response.outcome, "permanent_http");
+});
+
+test("Exhausted redirects retain requested and final URLs and the exact attempt count", async () => {
+  let calls = 0;
+  await assert.rejects(fetchPublicSource(requestedUrl, {
+    maxAttempts: 2,
+    resolve: publicResolve,
+    request: async url => {
+      calls++;
+      return url.toString() === requestedUrl
+        ? { status: 302, headers: { location: finalUrl }, body: Buffer.alloc(0) }
+        : { status: 503, headers: {}, body: Buffer.alloc(0) };
+    },
+  }), error => {
+    assert.ok(error instanceof SourceFetchError);
+    assert.equal(error.requestedUrl, requestedUrl);
+    assert.equal(error.finalUrl, finalUrl);
+    assert.equal(error.attemptCount, 2);
+    assert.equal(error.outcome, "retry_exhausted");
+    assert.deepEqual(error.attempts.map(a => a.requests.map(r => r.url)), [
+      [requestedUrl, finalUrl], [requestedUrl, finalUrl],
+    ]);
+    return true;
+  });
+  assert.equal(calls, 4);
 });
